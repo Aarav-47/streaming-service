@@ -67,24 +67,32 @@ function getOrCreateStream(cam) {
 
   // FFmpeg: RTSP -> MPEG1 video + MP2 audio piped to stdout
   const args = [
-    '-loglevel', 'quiet',
+    '-loglevel', 'error',
+    '-reorder_queue_size', '4000',
     '-rtsp_transport', 'tcp',
+    '-fflags', '+nobuffer+genpts',
+    '-flags', 'low_delay',
     '-i', cam.url,
     '-f', 'mpegts',
     '-codec:v', 'mpeg1video',
+    '-b:v', '1200k',
+    '-r', '25',
+    '-bf', '0',
     '-codec:a', 'mp2',
-    '-b:v', '1000k',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '1',
-    '-r', '25',
-    '-bf', '0',
     '-muxdelay', '0.001',
     'pipe:1'
   ];
 
-  const ffmpeg = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+  const ffmpeg = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   session.ffmpegProc = ffmpeg;
+
+  ffmpeg.stderr.on('data', (d) => {
+    const msg = d.toString().trim();
+    if (msg) console.error(`[FFmpeg ${cam.id}]`, msg);
+  });
 
   ffmpeg.stdout.on('data', (chunk) => {
     // Store first chunk as stream header for reconnecting clients
