@@ -188,7 +188,7 @@ html, body {
 
 /* ── Feed Card ──────────────────────────── */
 .cam-card {
-  background: var(--card); border: 1px solid var(--border);
+  background: #000 !important; border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden;
   position: relative; aspect-ratio: 16/9;
   transition: border-color .2s, transform .15s, box-shadow .15s;
@@ -286,8 +286,8 @@ html, body {
 .cam-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(7, 9, 15, 0.88);
-  backdrop-filter: blur(4px);
+  background: rgba(7, 9, 15, 0.94);
+  backdrop-filter: blur(6px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -322,6 +322,11 @@ html, body {
   box-shadow: 0 4px 16px rgba(0,0,0,0.5);
   transition: all .2s;
 }
+.loading-spinner {
+  font-size: 32px;
+  color: #3b82f6;
+  margin-bottom: 4px;
+}
 .overlay-label {
   font-size: 12px;
   font-weight: 600;
@@ -332,7 +337,7 @@ html, body {
 /* canvas fills the card; aspect-ratio ensures correct sizing */
 .cam-card canvas {
   width: 100% !important; height: 100% !important;
-  object-fit: contain; display: block; background: #000;
+  object-fit: contain; display: block; background: #000 !important;
   position: absolute; inset: 0;
 }
 

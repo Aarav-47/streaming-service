@@ -64,19 +64,18 @@ function getOrCreateStream(cam, quality = 'sd') {
     return streamSessions.get(sessionKey);
   }
 
-  // Switch RTSP URL subtype: subtype=0 for HD (Main Stream), subtype=1 for SD (Sub Stream)
-  const targetUrl = cam.url.replace(/subtype=\d+/, `subtype=${isHD ? 0 : 1}`);
+  // Use cam.url directly (which has confirmed working stream format)
+  const targetUrl = cam.url;
   console.log(`[Stream] Starting FFmpeg [${qKey.toUpperCase()}] for [${cam.id}] -> ${cam.ip}`);
 
   const session = { ffmpegProc: null, clients: new Set(), header: null };
   streamSessions.set(sessionKey, session);
 
-  // FFmpeg parameters:
-  // SD: 640x360, 500k bitrate, 20 fps, 1 thread (ultralight, under 2% CPU)
+  // FFmpeg parameters (pure CPU software decoding - rock solid in Windows Service):
+  // SD: 640x360, 500k bitrate, 20 fps, 1 thread (ultralight, ~2% CPU)
   // HD: Native 1080p, 1500k bitrate, 25 fps, 2 threads (full crystal clear)
   const args = [
     '-loglevel', 'error',
-    '-hwaccel', 'auto',
     '-threads', isHD ? '2' : '1',
     '-reorder_queue_size', '4000',
     '-rtsp_transport', 'tcp',

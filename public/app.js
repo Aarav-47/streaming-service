@@ -262,13 +262,22 @@ function renderGrid() {
   updatePlayAllBtn();
 }
 
+function resetCanvas(card, id) {
+  const oldCanvas = card.querySelector('canvas');
+  if (oldCanvas) oldCanvas.remove();
+  const newCanvas = document.createElement('canvas');
+  newCanvas.id = `canvas-${id}`;
+  card.appendChild(newCanvas);
+  return newCanvas;
+}
+
 // ── On-Demand Stream Management ───────────────────
 window.startFeed = function(id) {
   feedPlaying[id] = true;
   const q = feedQuality[id] || 'sd';
 
-  const overlay = document.getElementById(`overlay-${id}`);
-  if (overlay) overlay.classList.add('hidden');
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
 
   const playBtn = document.getElementById(`playbtn-${id}`);
   if (playBtn) {
@@ -277,15 +286,21 @@ window.startFeed = function(id) {
     playBtn.classList.add('playing');
   }
 
-  const card = document.getElementById(`card-${id}`);
-  if (!card) return;
-  const canvas = card.querySelector('canvas');
-  if (!canvas) return;
+  const overlay = document.getElementById(`overlay-${id}`);
+  if (overlay) {
+    overlay.innerHTML = `
+      <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+      <span class="overlay-label">Connecting Stream...</span>
+    `;
+    overlay.classList.remove('hidden');
+  }
 
   if (players[id]) {
     try { players[id].destroy(); } catch (_) {}
     delete players[id];
   }
+
+  const canvas = resetCanvas(card, id);
 
   const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
   const wsUrl   = `${wsProto}://${location.host}/stream?id=${encodeURIComponent(id)}&quality=${q}&token=${encodeURIComponent(authToken)}`;
@@ -302,8 +317,18 @@ window.stopFeed = function(id) {
     delete players[id];
   }
 
-  const overlay = document.getElementById(`overlay-${id}`);
-  if (overlay) overlay.classList.remove('hidden');
+  const card = document.getElementById(`card-${id}`);
+  if (card) {
+    resetCanvas(card, id);
+    const overlay = document.getElementById(`overlay-${id}`);
+    if (overlay) {
+      overlay.innerHTML = `
+        <div class="play-circle"><i class="fa-solid fa-play"></i></div>
+        <span class="overlay-label">Click to Open Feed</span>
+      `;
+      overlay.classList.remove('hidden');
+    }
+  }
 
   const playBtn = document.getElementById(`playbtn-${id}`);
   if (playBtn) {
@@ -312,14 +337,6 @@ window.stopFeed = function(id) {
     playBtn.classList.remove('playing');
   }
 
-  const card = document.getElementById(`card-${id}`);
-  if (card) {
-    const canvas = card.querySelector('canvas');
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  }
   updatePlayAllBtn();
 };
 
@@ -470,18 +487,31 @@ function updateSnoBadges() {
 }
 
 function initPlayer(camId, wsUrl, canvas) {
+  let firstFrame = false;
+  const overlay = document.getElementById(`overlay-${camId}`);
+
   // Create JSMpeg player with audio enabled, muted by default
   const player = new JSMpeg.Player(wsUrl, {
     canvas,
     autoplay: true,
     audio:    true,
     loop:     false,
+    onVideoDecode: () => {
+      if (!firstFrame) {
+        firstFrame = true;
+        if (overlay) overlay.classList.add('hidden');
+      }
+    },
     onStalled: () => {
       setTimeout(() => {
-        if (players[camId]) {
+        if (players[camId] && feedPlaying[camId]) {
           players[camId].destroy();
           delete players[camId];
-          initPlayer(camId, wsUrl, canvas);
+          const card = document.getElementById(`card-${camId}`);
+          if (card) {
+            const freshCanvas = resetCanvas(card, camId);
+            initPlayer(camId, wsUrl, freshCanvas);
+          }
         }
       }, 3000);
     }
