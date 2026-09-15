@@ -170,6 +170,9 @@ if (btnPrevPage && btnNextPage) {
   });
 }
 
+const feedQuality = {}; // id -> 'sd' | 'hd'
+const feedPlaying = {}; // id -> boolean
+
 function renderGrid() {
   destroyAllPlayers();
   audioActiveId = null;
@@ -196,16 +199,17 @@ function renderGrid() {
 
   visibleFeeds.forEach((cam, idx) => {
     const sno = String(offset + idx + 1).padStart(2, '0');
+    const q = feedQuality[cam.id] || 'sd';
+    const isPlaying = !!feedPlaying[cam.id];
+
     const card = document.createElement('div');
     card.className = 'cam-card';
     card.id = `card-${cam.id}`;
     card.dataset.id = cam.id;
 
-    // Build WebSocket URL: wss://<host>/stream?id=<id>&token=<jwt>
-    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl   = `${wsProto}://${location.host}/stream?id=${encodeURIComponent(cam.id)}&token=${encodeURIComponent(authToken)}`;
-
     const canvas = document.createElement('canvas');
+    canvas.id = `canvas-${cam.id}`;
+
     card.innerHTML = `
       <div class="cam-bar">
         <div class="cam-info">
@@ -213,6 +217,13 @@ function renderGrid() {
           <span class="cam-name" id="name-${cam.id}"><i class="fa-solid fa-video" style="margin-right:4px;opacity:.6"></i>${escapeHtml(cam.name)}</span>
         </div>
         <div class="cam-actions">
+          <div class="quality-toggle" title="Stream Quality">
+            <button class="q-btn ${q === 'sd' ? 'active' : ''}" id="qsd-${cam.id}" onclick="setFeedQuality('${cam.id}', 'sd')">SD</button>
+            <button class="q-btn ${q === 'hd' ? 'active' : ''}" id="qhd-${cam.id}" onclick="setFeedQuality('${cam.id}', 'hd')">HD</button>
+          </div>
+          <button class="cam-btn play-btn ${isPlaying ? 'playing' : ''}" id="playbtn-${cam.id}" title="${isPlaying ? 'Stop Feed' : 'Start Feed'}" onclick="toggleFeedPlay('${cam.id}')">
+            <i class="fa-solid ${isPlaying ? 'fa-stop' : 'fa-play'}"></i>
+          </button>
           <button class="cam-btn move-btn" title="Move Left" onclick="moveFeed('${cam.id}', -1)">
             <i class="fa-solid fa-arrow-left"></i>
           </button>
@@ -233,13 +244,133 @@ function renderGrid() {
           </button>
         </div>
       </div>
+      <div class="cam-overlay ${isPlaying ? 'hidden' : ''}" id="overlay-${cam.id}" onclick="startFeed('${cam.id}')">
+        <div class="play-circle"><i class="fa-solid fa-play"></i></div>
+        <span class="overlay-label">Click to Open Feed</span>
+      </div>
     `;
     card.appendChild(canvas);
     grid.appendChild(card);
 
     setupDragAndDrop(card);
-    initPlayer(cam.id, wsUrl, canvas);
+
+    if (isPlaying) {
+      startFeed(cam.id);
+    }
   });
+
+  updatePlayAllBtn();
+}
+
+// ── On-Demand Stream Management ───────────────────
+window.startFeed = function(id) {
+  feedPlaying[id] = true;
+  const q = feedQuality[id] || 'sd';
+
+  const overlay = document.getElementById(`overlay-${id}`);
+  if (overlay) overlay.classList.add('hidden');
+
+  const playBtn = document.getElementById(`playbtn-${id}`);
+  if (playBtn) {
+    playBtn.innerHTML = '<i class="fa-solid fa-stop"></i>';
+    playBtn.title = 'Stop Feed';
+    playBtn.classList.add('playing');
+  }
+
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  const canvas = card.querySelector('canvas');
+  if (!canvas) return;
+
+  if (players[id]) {
+    try { players[id].destroy(); } catch (_) {}
+    delete players[id];
+  }
+
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const wsUrl   = `${wsProto}://${location.host}/stream?id=${encodeURIComponent(id)}&quality=${q}&token=${encodeURIComponent(authToken)}`;
+
+  initPlayer(id, wsUrl, canvas);
+  updatePlayAllBtn();
+};
+
+window.stopFeed = function(id) {
+  feedPlaying[id] = false;
+
+  if (players[id]) {
+    try { players[id].destroy(); } catch (_) {}
+    delete players[id];
+  }
+
+  const overlay = document.getElementById(`overlay-${id}`);
+  if (overlay) overlay.classList.remove('hidden');
+
+  const playBtn = document.getElementById(`playbtn-${id}`);
+  if (playBtn) {
+    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+    playBtn.title = 'Start Feed';
+    playBtn.classList.remove('playing');
+  }
+
+  const card = document.getElementById(`card-${id}`);
+  if (card) {
+    const canvas = card.querySelector('canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+  updatePlayAllBtn();
+};
+
+window.toggleFeedPlay = function(id) {
+  if (feedPlaying[id]) {
+    stopFeed(id);
+  } else {
+    startFeed(id);
+  }
+};
+
+window.setFeedQuality = function(id, quality) {
+  feedQuality[id] = quality;
+  const qsd = document.getElementById(`qsd-${id}`);
+  const qhd = document.getElementById(`qhd-${id}`);
+  if (qsd && qhd) {
+    qsd.classList.toggle('active', quality === 'sd');
+    qhd.classList.toggle('active', quality === 'hd');
+  }
+  if (feedPlaying[id]) {
+    startFeed(id);
+  }
+};
+
+// Master Play All / Stop All
+const btnPlayAll = document.getElementById('btn-play-all');
+if (btnPlayAll) {
+  btnPlayAll.addEventListener('click', () => {
+    const currentCards = Array.from(grid.querySelectorAll('.cam-card'));
+    const anyStopped = currentCards.some(c => !feedPlaying[c.dataset.id]);
+
+    currentCards.forEach(c => {
+      const id = c.dataset.id;
+      if (anyStopped) {
+        startFeed(id);
+      } else {
+        stopFeed(id);
+      }
+    });
+    updatePlayAllBtn();
+  });
+}
+
+function updatePlayAllBtn() {
+  if (!btnPlayAll) return;
+  const currentCards = Array.from(grid.querySelectorAll('.cam-card'));
+  if (!currentCards.length) return;
+  const allPlaying = currentCards.every(c => feedPlaying[c.dataset.id]);
+  btnPlayAll.innerHTML = allPlaying
+    ? '<i class="fa-solid fa-stop"></i><span class="btn-label">Stop All</span>'
+    : '<i class="fa-solid fa-play"></i><span class="btn-label">Play All</span>';
 }
 
 function setupDragAndDrop(card) {

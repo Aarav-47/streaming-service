@@ -249,7 +249,85 @@ html, body {
 }
 .cam-btn:hover         { background: #3b82f6; border-color: #60a5fa; color: #fff; }
 .cam-btn.active        { background: #15803d; border-color: #22c55e; color: #fff; box-shadow: 0 0 8px rgba(34,197,94,.6); }
+.cam-btn.playing       { background: #1e3a8a; border-color: #3b82f6; color: #60a5fa; }
 .cam-btn.del:hover     { background: #b91c1c; border-color: #ef4444; color: #fff; }
+
+/* ── Quality Toggle (SD / HD) ─────────────── */
+.quality-toggle {
+  display: inline-flex;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  padding: 1px;
+  gap: 1px;
+}
+.q-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all .15s;
+  line-height: 1.2;
+}
+.q-btn.active {
+  background: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.q-btn:hover:not(.active) {
+  color: #fff;
+}
+
+/* ── Play Overlay ─────────────────────────── */
+.cam-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 9, 15, 0.88);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 4;
+  cursor: pointer;
+  transition: opacity .2s, visibility .2s;
+}
+.cam-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+.cam-overlay:hover .play-circle {
+  transform: scale(1.1);
+  background: #2563eb;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+}
+.play-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  padding-left: 3px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  transition: all .2s;
+}
+.overlay-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  letter-spacing: 0.3px;
+}
 
 /* canvas fills the card; aspect-ratio ensures correct sizing */
 .cam-card canvas {

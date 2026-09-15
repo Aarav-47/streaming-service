@@ -53,36 +53,42 @@ function saveFeeds(feeds) {
 // ── Per-Stream WebSocket Broadcaster ────────────────────────
 // streamSessions holds all active FFmpeg processes and their subscriber sets
 const streamSessions = new Map();
-// { camId -> { ffmpegProc, clients: Set<WebSocket>, header: Buffer|null } }
+// { sessionKey -> { ffmpegProc, clients: Set<WebSocket>, header: Buffer|null } }
 
-function getOrCreateStream(cam) {
-  if (streamSessions.has(cam.id)) {
-    return streamSessions.get(cam.id);
+function getOrCreateStream(cam, quality = 'sd') {
+  const isHD = (quality.toLowerCase() === 'hd');
+  const qKey = isHD ? 'hd' : 'sd';
+  const sessionKey = `${cam.id}_${qKey}`;
+
+  if (streamSessions.has(sessionKey)) {
+    return streamSessions.get(sessionKey);
   }
 
-  console.log(`[Stream] Starting FFmpeg for [${cam.id}] -> ${cam.ip}`);
+  // Switch RTSP URL subtype: subtype=0 for HD (Main Stream), subtype=1 for SD (Sub Stream)
+  const targetUrl = cam.url.replace(/subtype=\d+/, `subtype=${isHD ? 0 : 1}`);
+  console.log(`[Stream] Starting FFmpeg [${qKey.toUpperCase()}] for [${cam.id}] -> ${cam.ip}`);
 
   const session = { ffmpegProc: null, clients: new Set(), header: null };
-  streamSessions.set(cam.id, session);
+  streamSessions.set(sessionKey, session);
 
-  // FFmpeg: RTSP -> MPEG1 video + MP2 audio piped to stdout
+  // FFmpeg parameters:
+  // SD: 640x360, 500k bitrate, 20 fps, 1 thread (ultralight, under 2% CPU)
+  // HD: Native 1080p, 1500k bitrate, 25 fps, 2 threads (full crystal clear)
   const args = [
     '-loglevel', 'error',
     '-hwaccel', 'auto',
-    '-threads', '1',
+    '-threads', isHD ? '2' : '1',
     '-reorder_queue_size', '4000',
     '-rtsp_transport', 'tcp',
     '-fflags', '+nobuffer+genpts',
     '-flags', 'low_delay',
-    '-i', cam.url,
+    '-i', targetUrl,
     '-f', 'mpegts',
     '-codec:v', 'mpeg1video',
-    '-s', '640x360',
-    '-b:v', '600k',
-    '-r', '20',
+    ...(isHD ? ['-b:v', '1500k', '-r', '25'] : ['-s', '640x360', '-b:v', '500k', '-r', '20']),
     '-bf', '0',
     '-codec:a', 'mp2',
-    '-b:a', '96k',
+    '-b:a', isHD ? '128k' : '64k',
     '-ar', '44100',
     '-ac', '1',
     '-muxdelay', '0.001',
@@ -94,14 +100,11 @@ function getOrCreateStream(cam) {
 
   ffmpeg.stderr.on('data', (d) => {
     const msg = d.toString().trim();
-    if (msg) console.error(`[FFmpeg ${cam.id}]`, msg);
+    if (msg) console.error(`[FFmpeg ${sessionKey}]`, msg);
   });
 
   ffmpeg.stdout.on('data', (chunk) => {
-    // Store first chunk as stream header for reconnecting clients
     if (!session.header) session.header = chunk;
-
-    // Broadcast raw MPEG1 chunks to all connected WebSocket clients
     session.clients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(chunk, { binary: true }, (err) => {
@@ -112,27 +115,26 @@ function getOrCreateStream(cam) {
   });
 
   ffmpeg.on('exit', (code) => {
-    console.log(`[Stream] FFmpeg exited for [${cam.id}] (code ${code})`);
-    streamSessions.delete(cam.id);
-    // Notify all connected clients that stream ended
+    console.log(`[Stream] FFmpeg exited for [${sessionKey}] (code ${code})`);
+    streamSessions.delete(sessionKey);
     session.clients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) ws.close();
     });
   });
 
   ffmpeg.on('error', (err) => {
-    console.error(`[Stream] FFmpeg error for [${cam.id}]:`, err.message);
-    streamSessions.delete(cam.id);
+    console.error(`[Stream] FFmpeg error for [${sessionKey}]:`, err.message);
+    streamSessions.delete(sessionKey);
   });
 
   return session;
 }
 
-function stopStreamIfEmpty(camId) {
-  const session = streamSessions.get(camId);
+function stopStreamIfEmpty(sessionKey) {
+  const session = streamSessions.get(sessionKey);
   if (!session) return;
   if (session.clients.size === 0) {
-    console.log(`[Stream] No viewers left for [${camId}], stopping FFmpeg.`);
+    console.log(`[Stream] No viewers left for [${sessionKey}], stopping FFmpeg.`);
     if (session.ffmpegProc) {
       if (process.platform === 'win32') {
         spawn('taskkill', ['/pid', String(session.ffmpegProc.pid), '/f', '/t'], { stdio: 'ignore' });
@@ -140,7 +142,7 @@ function stopStreamIfEmpty(camId) {
         try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
       }
     }
-    streamSessions.delete(camId);
+    streamSessions.delete(sessionKey);
   }
 }
 
@@ -311,15 +313,17 @@ const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server, path: '/stream' });
 
 wss.on('connection', (ws, req) => {
-  // Extract cam ID and auth token from query string
-  // e.g. ws://localhost:3000/stream?id=feed_25&token=eyJ...
-  const urlParams = new URLSearchParams(req.url.replace('/stream', '').replace('?', ''));
-  const camId     = urlParams.get('id');
-  const token     = urlParams.get('token') ||
-                    (req.headers.cookie || '').split(';').reduce((acc, c) => {
-                      const [k, v] = c.trim().split('=');
-                      return k === 'stream_auth' ? v : acc;
-                    }, null);
+  // Extract cam ID, quality, and auth token from query string
+  // e.g. ws://localhost:3000/stream?id=feed_25&quality=sd&token=eyJ...
+  const urlParams  = new URLSearchParams(req.url.replace('/stream', '').replace('?', ''));
+  const camId      = urlParams.get('id');
+  const quality    = (urlParams.get('quality') || 'sd').toLowerCase() === 'hd' ? 'hd' : 'sd';
+  const sessionKey = `${camId}_${quality}`;
+  const token      = urlParams.get('token') ||
+                     (req.headers.cookie || '').split(';').reduce((acc, c) => {
+                       const [k, v] = c.trim().split('=');
+                       return k === 'stream_auth' ? v : acc;
+                     }, null);
 
   // Authenticate the WebSocket connection
   if (!token || !verifyToken(token)) {
@@ -333,15 +337,15 @@ wss.on('connection', (ws, req) => {
   }
 
   const feeds = getFeeds();
-  const cam     = feeds.find(c => c.id === camId);
+  const cam   = feeds.find(c => c.id === camId);
   if (!cam) {
     ws.close(4004, `Feed ${camId} not found`);
     return;
   }
 
-  console.log(`[WS] Client connected to stream: [${camId}]`);
+  console.log(`[WS] Client connected to stream: [${sessionKey}]`);
 
-  const session = getOrCreateStream(cam);
+  const session = getOrCreateStream(cam, quality);
   session.clients.add(ws);
 
   // Send buffered header so JSMpeg can decode immediately
@@ -351,9 +355,9 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     session.clients.delete(ws);
-    console.log(`[WS] Client disconnected from [${camId}]. Viewers: ${session.clients.size}`);
+    console.log(`[WS] Client disconnected from [${sessionKey}]. Viewers: ${session.clients.size}`);
     // Delay stop to allow quick reconnects (e.g. page refresh)
-    setTimeout(() => stopStreamIfEmpty(camId), 5000);
+    setTimeout(() => stopStreamIfEmpty(sessionKey), 3000);
   });
 
   ws.on('error', () => session.clients.delete(ws));
