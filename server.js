@@ -19,7 +19,7 @@ const cors        = require('cors');
 const PORT          = parseInt(process.env.PORT  || '3000', 10);
 const JWT_SECRET    = process.env.JWT_SECRET     || 'streaming_secure_jwt_2026_hhd';
 const ADMIN_USER    = process.env.ADMIN_USER     || 'admin';
-const ADMIN_PASS    = process.env.ADMIN_PASS     || 'admin@123';
+const ADMIN_PASS    = process.env.ADMIN_PASS     || 'Aarav@2000';
 const FEEDS_FILE  = path.join(__dirname, 'feeds.json');
 
 // FFmpeg binary: auto-detected from ./ffmpeg/bin/ffmpeg.exe (Windows)

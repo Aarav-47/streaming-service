@@ -25,22 +25,56 @@ const modalTitle  = document.getElementById('modal-title');
 
 // ── Service Worker (PWA) ──────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then((reg) => {
+        console.log('[PWA] Service Worker registered with scope:', reg.scope);
+      })
+      .catch((err) => {
+        console.warn('[PWA] Service Worker registration failed:', err);
+      });
+  });
 }
 
-// Android install prompt
+// Android / Chromium install prompt
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPWA = e;
-  document.getElementById('btn-install').classList.remove('hidden');
+  const bDesk = document.getElementById('btn-install');
+  const bMob  = document.getElementById('btn-m-install');
+  if (bDesk) bDesk.classList.remove('hidden');
+  if (bMob)  bMob.classList.remove('hidden');
 });
 
-document.getElementById('btn-install').addEventListener('click', async () => {
-  if (!deferredPWA) return;
-  deferredPWA.prompt();
-  const { outcome } = await deferredPWA.userChoice;
-  if (outcome === 'accepted') document.getElementById('btn-install').classList.add('hidden');
-  deferredPWA = null;
+async function handlePWAInstall() {
+  if (deferredPWA) {
+    deferredPWA.prompt();
+    const { outcome } = await deferredPWA.userChoice;
+    if (outcome === 'accepted') {
+      const bDesk = document.getElementById('btn-install');
+      const bMob  = document.getElementById('btn-m-install');
+      if (bDesk) bDesk.classList.add('hidden');
+      if (bMob)  bMob.classList.add('hidden');
+    }
+    deferredPWA = null;
+  } else {
+    // Helpful guide for iOS Safari and other browsers
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+      alert('To install Streaming Service on iPhone / iPad:\n\n1. Tap the Share button (square with arrow ↑) in Safari.\n2. Scroll down and tap "Add to Home Screen".\n3. Tap "Add" at the top right.');
+    } else {
+      alert('To install Streaming Service:\n\n• In Chrome/Edge: Tap menu (⋮) -> "Install App" or "Add to Home screen"\n• If already installed, check your app launcher or home screen.');
+    }
+  }
+}
+
+const btnInstall = document.getElementById('btn-install');
+if (btnInstall) btnInstall.addEventListener('click', handlePWAInstall);
+
+const btnMInstall = document.getElementById('btn-m-install');
+if (btnMInstall) btnMInstall.addEventListener('click', () => {
+  toggleMobileMenu(false);
+  handlePWAInstall();
 });
 
 // ── Auth ──────────────────────────────────────────
@@ -638,12 +672,73 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 window.toggleFS = function(id) {
   const card = document.getElementById(`card-${id}`);
   if (!card) return;
-  if (!document.fullscreenElement) {
-    card.requestFullscreen().catch(console.warn);
+  const isFS = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
+  if (!isFS) {
+    if (card.requestFullscreen) {
+      card.requestFullscreen().catch(console.warn);
+    } else if (card.webkitRequestFullscreen) {
+      card.webkitRequestFullscreen();
+    } else if (card.mozRequestFullScreen) {
+      card.mozRequestFullScreen();
+    }
   } else {
-    document.exitFullscreen();
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    }
   }
 };
+
+// ── Mobile Menu Dropdown ──────────────────────────
+const mobileMenuBtn = document.getElementById('btn-mobile-menu');
+const mobileMenu    = document.getElementById('mobile-menu');
+
+function toggleMobileMenu(force) {
+  if (!mobileMenu) return;
+  const isHidden = mobileMenu.classList.contains('hidden');
+  const shouldShow = (typeof force === 'boolean') ? force : isHidden;
+  mobileMenu.classList.toggle('hidden', !shouldShow);
+}
+
+if (mobileMenuBtn) {
+  mobileMenuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMobileMenu();
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (mobileMenu && !mobileMenu.contains(e.target) && (!mobileMenuBtn || !mobileMenuBtn.contains(e.target))) {
+    toggleMobileMenu(false);
+  }
+});
+
+const btnMAdd = document.getElementById('btn-m-add');
+if (btnMAdd) {
+  btnMAdd.addEventListener('click', () => {
+    toggleMobileMenu(false);
+    document.getElementById('btn-add').click();
+  });
+}
+
+const btnMWake = document.getElementById('btn-m-wake');
+if (btnMWake) {
+  btnMWake.addEventListener('click', () => {
+    toggleMobileMenu(false);
+    document.getElementById('btn-wake').click();
+  });
+}
+
+const btnMLogout = document.getElementById('btn-m-logout');
+if (btnMLogout) {
+  btnMLogout.addEventListener('click', () => {
+    toggleMobileMenu(false);
+    document.getElementById('btn-logout').click();
+  });
+}
 
 // ── Remove Feed ─────────────────────────────────
 window.removeCam = async function(id) {

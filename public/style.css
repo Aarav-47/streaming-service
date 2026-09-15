@@ -362,28 +362,120 @@ html, body {
   font-size: 22px; cursor: pointer; line-height: 1;
 }
 
-/* ── Mobile ───────────────────────────────── */
+/* ── Desktop vs Mobile Nav Actions ────────── */
+.desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mobile-actions {
+  display: none;
+  position: relative;
+}
+.desktop-only {
+  display: inline-block;
+}
+
+/* ── Mobile Dropdown Menu ─────────────────── */
+.mobile-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  padding: 6px;
+  min-width: 180px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.m-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background .15s;
+}
+.m-item:hover, .m-item:active {
+  background: var(--card);
+}
+.m-item.danger {
+  color: var(--red);
+}
+.m-item.danger:hover, .m-item.danger:active {
+  background: rgba(239, 68, 68, 0.12);
+}
+.item-icon {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
+.green-icon { color: var(--green); }
+.yellow-icon { color: #f59e0b; }
+.blue-icon { color: var(--accent); }
+.red-icon { color: var(--red); }
+
+/* ── Mobile Responsive Overrides ─────────── */
 @media (max-width: 768px) {
-  .btn-label   { display: none; }
-  .brand-name  { display: none; }
+  .btn-label { display: none; }
+  .brand-name { display: none; }
+  .desktop-actions { display: none !important; }
+  .desktop-only { display: none !important; }
+  .mobile-actions { display: block !important; }
+
   .header {
     padding: 0 8px;
     gap: 6px;
+    height: 50px;
+  }
+  .brand {
+    gap: 6px;
+  }
+  .brand-icon {
+    font-size: 18px;
+  }
+  .live-pill {
+    padding: 2px 6px;
+    font-size: 9px;
   }
   .layout-tabs {
-    display: flex;
     padding: 2px;
     gap: 2px;
   }
   .tab-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  .pager-controls {
+    padding: 2px 4px;
+    gap: 2px;
+  }
+  .pager-btn {
+    padding: 2px 5px;
+    font-size: 10px;
+  }
+  .page-indicator {
+    font-size: 10px;
+    min-width: 28px;
+  }
+  .icon-btn {
     padding: 5px 8px;
     font-size: 12px;
   }
-  .icon-btn {
-    padding: 6px 8px;
-  }
   .grid-wrap {
-    padding: 6px;
+    padding: 4px;
   }
   .grid {
     gap: 6px;
@@ -396,22 +488,60 @@ html, body {
   .g4 { grid-template-columns: repeat(2, 1fr); }
   .g0 { grid-template-columns: repeat(2, 1fr); }
 
+  /* Card bar on mobile 2x2: clean, minimal, non-overlapping */
   .cam-bar {
-    height: 32px;
-    padding: 0 5px;
+    height: 28px;
+    padding: 0 4px;
   }
   .cam-sno {
-    font-size: 10px;
-    padding: 1px 4px;
+    font-size: 9px;
+    padding: 1px 3px;
   }
   .cam-name {
-    font-size: 11px;
-    max-width: 60px;
+    font-size: 10px;
+    max-width: 55px;
+  }
+  .cam-actions {
+    gap: 2px;
+  }
+  .quality-toggle {
+    padding: 1px;
+  }
+  .q-btn {
+    font-size: 8px;
+    padding: 1px 3px;
   }
   .cam-btn {
-    min-width: 22px;
-    height: 22px;
-    padding: 2px 4px;
-    font-size: 10px;
+    min-width: 20px;
+    height: 20px;
+    padding: 1px 3px;
+    font-size: 9px;
+  }
+
+  /* On mobile 2x2 grid: hide administrative buttons so card is clutter-free */
+  .cam-card .move-btn,
+  .cam-card .rename-btn,
+  .cam-card .del {
+    display: none !important;
+  }
+
+  /* When single feed (1 View) is selected on mobile: restore full controls */
+  .g1 .cam-card .move-btn,
+  .g1 .cam-card .rename-btn,
+  .g1 .cam-card .del {
+    display: inline-flex !important;
+  }
+  .g1 .cam-name {
+    max-width: 140px;
+    font-size: 12px;
+  }
+  .g1 .cam-bar {
+    height: 34px;
+    padding: 0 8px;
+  }
+  .g1 .cam-btn {
+    min-width: 26px;
+    height: 26px;
+    font-size: 11px;
   }
 }

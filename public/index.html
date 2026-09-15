@@ -9,8 +9,10 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="icon" href="/icon-192.png" />
-  <link rel="stylesheet" href="/style.css?v=2.5" />
+  <meta name="apple-mobile-web-app-title" content="Streaming" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="/style.css?v=2.6" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />
 </head>
 <body>
@@ -55,19 +57,32 @@
         <div class="layout-tabs">
           <button class="tab-btn" data-grid="1"  title="1 View">1</button>
           <button class="tab-btn active" data-grid="4"  title="4 View (2×2)">4</button>
-          <button class="tab-btn" data-grid="9"  title="9 View (3×3)">9</button>
-          <button class="tab-btn" data-grid="0"  title="All Feeds">All</button>
+          <button class="tab-btn desktop-only" data-grid="9"  title="9 View (3×3)">9</button>
+          <button class="tab-btn desktop-only" data-grid="0"  title="All Feeds">All</button>
         </div>
         <div class="pager-controls" id="pager-wrap">
           <button id="btn-prev-page" class="pager-btn" title="Previous Page"><i class="fa-solid fa-chevron-left"></i></button>
           <span id="page-indicator" class="page-indicator">1 / 6</span>
           <button id="btn-next-page" class="pager-btn" title="Next Page"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
-        <button id="btn-play-all" class="icon-btn"         title="Stream all visible feeds"><i class="fa-solid fa-play"></i><span class="btn-label">Play All</span></button>
-        <button id="btn-add"      class="icon-btn green"   title="Add feed"><i class="fa-solid fa-plus"></i><span class="btn-label">Add Feed</span></button>
-        <button id="btn-wake"    class="icon-btn"         title="Keep screen on"><i class="fa-solid fa-sun"></i></button>
-        <button id="btn-install" class="icon-btn green hidden" title="Install Android App"><i class="fa-brands fa-android"></i><span class="btn-label">Install</span></button>
-        <button id="btn-logout"  class="icon-btn red"     title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+        <button id="btn-play-all" class="icon-btn" title="Stream all visible feeds"><i class="fa-solid fa-play"></i><span class="btn-label">Play All</span></button>
+        
+        <div class="desktop-actions">
+          <button id="btn-add"     class="icon-btn green" title="Add feed"><i class="fa-solid fa-plus"></i><span class="btn-label">Add Feed</span></button>
+          <button id="btn-wake"    class="icon-btn"       title="Keep screen on"><i class="fa-solid fa-sun"></i></button>
+          <button id="btn-install" class="icon-btn green hidden" title="Install App"><i class="fa-solid fa-download"></i><span class="btn-label">Install</span></button>
+          <button id="btn-logout"  class="icon-btn red"   title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+
+        <div class="mobile-actions">
+          <button id="btn-mobile-menu" class="icon-btn" title="Menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+          <div id="mobile-menu" class="mobile-dropdown hidden">
+            <button id="btn-m-add" class="m-item"><i class="fa-solid fa-plus item-icon green-icon"></i> Add New Feed</button>
+            <button id="btn-m-wake" class="m-item"><i class="fa-solid fa-sun item-icon yellow-icon"></i> Keep Screen On</button>
+            <button id="btn-m-install" class="m-item"><i class="fa-solid fa-download item-icon blue-icon"></i> Install App</button>
+            <button id="btn-m-logout" class="m-item danger"><i class="fa-solid fa-right-from-bracket item-icon red-icon"></i> Logout</button>
+          </div>
+        </div>
       </nav>
     </header>
 
@@ -133,6 +148,6 @@
 
   <!-- JSMpeg player library (renders MPEG1 video on canvas via WebSocket) -->
   <script src="https://cdn.jsdelivr.net/gh/phoboslab/jsmpeg@master/jsmpeg.min.js"></script>
-  <script src="/app.js?v=2.5"></script>
+  <script src="/app.js?v=2.6"></script>
 </body>
 </html>
