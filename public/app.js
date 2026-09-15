@@ -1,12 +1,12 @@
 /* ══════════════════════════════════════════════════
    Streaming Service — Frontend Application Logic
-   JSMpeg canvas player, Auth, PWA, Camera management
+   JSMpeg canvas player, Auth, PWA, Feed management
 ══════════════════════════════════════════════════ */
 'use strict';
 
 // ── State ─────────────────────────────────────────
 let authToken   = localStorage.getItem('stream_token') || null;
-let cameras     = [];
+let feeds     = [];
 let players     = {};   // camId -> JSMpeg.Player instance
 let wakeLock    = null;
 let deferredPWA = null;
@@ -99,7 +99,7 @@ function showLogin() {
 function showApp() {
   loginScreen.classList.add('hidden');
   app.classList.remove('hidden');
-  loadCameras();
+  loadFeeds();
 }
 
 // ── API Helper ────────────────────────────────────
@@ -117,16 +117,16 @@ async function apiFetch(url, { method = 'GET', body } = {}) {
   return res.json();
 }
 
-// ── Cameras ───────────────────────────────────────
-async function loadCameras() {
+// ── Feeds ───────────────────────────────────────
+async function loadFeeds() {
   try {
-    const r = await apiFetch('/api/cameras');
+    const r = await apiFetch('/api/feeds');
     if (r.success) {
-      cameras = r.cameras;
+      feeds = r.feeds;
       renderGrid();
     }
   } catch (err) {
-    console.error('Failed to load cameras:', err);
+    console.error('Failed to load feeds:', err);
   }
 }
 
@@ -134,7 +134,7 @@ function renderGrid() {
   destroyAllPlayers();
   grid.innerHTML = '';
 
-  cameras.forEach((cam) => {
+  feeds.forEach((cam) => {
     const card = document.createElement('div');
     card.className = 'cam-card';
     card.id = `card-${cam.id}`;
@@ -205,12 +205,12 @@ window.toggleFS = function(id) {
   }
 };
 
-// ── Remove Camera ─────────────────────────────────
+// ── Remove Feed ─────────────────────────────────
 window.removeCam = async function(id) {
   if (!confirm('Remove this feed?')) return;
   try {
-    await apiFetch(`/api/cameras/${id}`, { method: 'DELETE' });
-    cameras = cameras.filter(c => c.id !== id);
+    await apiFetch(`/api/feeds/${id}`, { method: 'DELETE' });
+    feeds = feeds.filter(c => c.id !== id);
     renderGrid();
   } catch {
     alert('Failed to remove feed');
@@ -249,12 +249,12 @@ camForm.addEventListener('submit', async (e) => {
   };
 
   try {
-    const url    = editId ? `/api/cameras/${editId}` : '/api/cameras';
+    const url    = editId ? `/api/feeds/${editId}` : '/api/feeds';
     const method = editId ? 'PUT' : 'POST';
     const r = await apiFetch(url, { method, body: payload });
     if (r.success) {
       modal.classList.add('hidden');
-      await loadCameras();
+      await loadFeeds();
     } else {
       camErr.textContent = r.message || 'Failed to save';
     }

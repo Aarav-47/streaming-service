@@ -169,7 +169,7 @@ html, body {
 .g4 { grid-template-columns: repeat(4, 1fr); }
 .g0 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
 
-/* ── Camera Card ──────────────────────────── */
+/* ── Feed Card ──────────────────────────── */
 .cam-card {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden;

@@ -1,6 +1,6 @@
 # Streaming Service
 
-A self-hosted live video streaming web application and Android PWA. Streams IP camera feeds over WebSocket using a 100% custom Node.js + FFmpeg engine with no third-party streaming middleware.
+A self-hosted live video streaming web application and Android PWA. Streams IP feed feeds over WebSocket using a 100% custom Node.js + FFmpeg engine with no third-party streaming middleware.
 
 Runs as a native Windows background service that starts automatically on boot.
 
@@ -11,7 +11,7 @@ Runs as a native Windows background service that starts automatically on boot.
 - **JSMpeg canvas player** — ~200ms ultra-low latency playback in any browser, no plugins
 - **Android PWA** — Install directly from Chrome as a native app on Android home screen
 - **JWT Authentication** — Session-based login, 30-day persistent cookie
-- **Dynamic Camera Management** — Add, edit or remove camera feeds from the UI without restarting
+- **Dynamic Feed Management** — Add, edit or remove feed feeds from the UI without restarting
 - **Windows Auto-Start Service** — Registered as a native Windows Service (NSSM), starts before user login
 - **Cloudflare Tunnel** — Served to a public URL without port forwarding or static IP
 
@@ -43,12 +43,12 @@ git clone https://github.com/horizonhuedigital/streaming-service.git
 cd streaming-service
 ```
 
-### 2. Create your `cameras.json`
-Copy the example and fill in your camera IPs and credentials:
+### 2. Create your `feeds.json`
+Copy the example and fill in your feed IPs and credentials:
 ```powershell
-Copy-Item cameras.example.json cameras.json
+Copy-Item feeds.example.json feeds.json
 ```
-Edit `cameras.json` with your camera details.
+Edit `feeds.json` with your feed details.
 
 ### 3. Install as Windows Service (One Command)
 Open PowerShell **as Administrator** and run:
@@ -132,13 +132,13 @@ Get-Content .\logs\service.log -Tail 50 -Wait
 
 ---
 
-## cameras.json Format
-> ⚠️ `cameras.json` is in `.gitignore` — **never commit camera credentials to Git!**
+## feeds.json Format
+> ⚠️ `feeds.json` is in `.gitignore` — **never commit feed credentials to Git!**
 
 ```json
 [
   {
-    "id": "cam_1",
+    "id": "feed_1",
     "name": "Main Entrance",
     "ip": "192.168.1.50",
     "port": 554,

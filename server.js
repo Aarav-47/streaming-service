@@ -20,7 +20,7 @@ const PORT          = parseInt(process.env.PORT  || '3000', 10);
 const JWT_SECRET    = process.env.JWT_SECRET     || 'streaming_secure_jwt_2026_hhd';
 const ADMIN_USER    = process.env.ADMIN_USER     || 'admin';
 const ADMIN_PASS    = process.env.ADMIN_PASS     || 'admin@123';
-const CAMERAS_FILE  = path.join(__dirname, 'cameras.json');
+const FEEDS_FILE  = path.join(__dirname, 'feeds.json');
 
 // FFmpeg binary: auto-detected from ./ffmpeg/bin/ffmpeg.exe (Windows)
 // or system PATH on Linux/Mac
@@ -34,19 +34,19 @@ const FFMPEG_BIN = (() => {
 
 console.log(`[Stream Engine] FFmpeg binary: ${FFMPEG_BIN}`);
 
-// ── Camera Config Helpers ────────────────────────────────────
-function getCameras() {
+// ── Feed Config Helpers ────────────────────────────────────
+function getFeeds() {
   try {
-    if (!fs.existsSync(CAMERAS_FILE)) return [];
-    return JSON.parse(fs.readFileSync(CAMERAS_FILE, 'utf8'));
+    if (!fs.existsSync(FEEDS_FILE)) return [];
+    return JSON.parse(fs.readFileSync(FEEDS_FILE, 'utf8'));
   } catch (e) {
-    console.error('[Config] Error reading cameras.json:', e.message);
+    console.error('[Config] Error reading feeds.json:', e.message);
     return [];
   }
 }
 
-function saveCameras(cameras) {
-  fs.writeFileSync(CAMERAS_FILE, JSON.stringify(cameras, null, 2), 'utf8');
+function saveFeeds(feeds) {
+  fs.writeFileSync(FEEDS_FILE, JSON.stringify(feeds, null, 2), 'utf8');
 }
 
 // ── Per-Stream WebSocket Broadcaster ────────────────────────
@@ -181,42 +181,42 @@ app.get('/api/auth/check', (req, res) => {
   res.json({ authenticated: !!decoded, user: decoded?.user || null });
 });
 
-// ── Camera CRUD Routes ────────────────────────────────────────
-app.get('/api/cameras', authMiddleware, (req, res) => {
-  const cameras = getCameras().map(({ id, name, ip, port, channel, subtype }) => ({
+// ── Feed CRUD Routes ────────────────────────────────────────
+app.get('/api/feeds', authMiddleware, (req, res) => {
+  const feeds = getFeeds().map(({ id, name, ip, port, channel, subtype }) => ({
     id, name, ip, port, channel, subtype
   }));
-  res.json({ success: true, cameras });
+  res.json({ success: true, feeds });
 });
 
-app.post('/api/cameras', authMiddleware, (req, res) => {
+app.post('/api/feeds', authMiddleware, (req, res) => {
   const { name, ip, port = 554, username = 'admin', password = '', channel = 1, subtype = 0 } = req.body || {};
   if (!name || !ip) {
     return res.status(400).json({ success: false, message: 'Name and IP are required' });
   }
   const encodedPass = encodeURIComponent(password);
-  const id          = `cam_${ip.split('.').pop()}_${Date.now().toString().slice(-5)}`;
+  const id          = `feed_${ip.split('.').pop()}_${Date.now().toString().slice(-5)}`;
   const url         = `rtsp://${username}:${encodedPass}@${ip}:${port}/cam/realmonitor?channel=${channel}&subtype=${subtype}`;
   const newCam      = { id, name, ip, port, username, password, channel, subtype, url };
-  const cameras     = getCameras();
-  cameras.push(newCam);
-  saveCameras(cameras);
-  res.json({ success: true, camera: { id, name, ip } });
+  const feeds     = getFeeds();
+  feeds.push(newCam);
+  saveFeeds(feeds);
+  res.json({ success: true, feed: { id, name, ip } });
 });
 
-app.put('/api/cameras/:id', authMiddleware, (req, res) => {
-  const cameras = getCameras();
-  const idx     = cameras.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: 'Camera not found' });
+app.put('/api/feeds/:id', authMiddleware, (req, res) => {
+  const feeds = getFeeds();
+  const idx     = feeds.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ success: false, message: 'Feed not found' });
   const { name, ip, port = 554, username = 'admin', password = '', channel = 1, subtype = 0 } = req.body || {};
-  const encodedPass = encodeURIComponent(password || cameras[idx].password);
-  cameras[idx] = {
-    ...cameras[idx], name: name || cameras[idx].name,
-    ip: ip || cameras[idx].ip, port, username, channel, subtype,
-    password: password || cameras[idx].password,
-    url: `rtsp://${username}:${encodedPass}@${ip || cameras[idx].ip}:${port}/cam/realmonitor?channel=${channel}&subtype=${subtype}`
+  const encodedPass = encodeURIComponent(password || feeds[idx].password);
+  feeds[idx] = {
+    ...feeds[idx], name: name || feeds[idx].name,
+    ip: ip || feeds[idx].ip, port, username, channel, subtype,
+    password: password || feeds[idx].password,
+    url: `rtsp://${username}:${encodedPass}@${ip || feeds[idx].ip}:${port}/cam/realmonitor?channel=${channel}&subtype=${subtype}`
   };
-  saveCameras(cameras);
+  saveFeeds(feeds);
   // Kill existing stream so it reconnects with new config
   const session = streamSessions.get(req.params.id);
   if (session) {
@@ -226,9 +226,9 @@ app.put('/api/cameras/:id', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/cameras/:id', authMiddleware, (req, res) => {
-  const cameras = getCameras().filter(c => c.id !== req.params.id);
-  saveCameras(cameras);
+app.delete('/api/feeds/:id', authMiddleware, (req, res) => {
+  const feeds = getFeeds().filter(c => c.id !== req.params.id);
+  saveFeeds(feeds);
   const session = streamSessions.get(req.params.id);
   if (session) {
     try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
@@ -242,7 +242,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     activeStreams: streamSessions.size,
-    totalCameras: getCameras().length,
+    totalFeeds: getFeeds().length,
     uptime: Math.round(process.uptime())
   });
 });
@@ -257,7 +257,7 @@ const wss    = new WebSocket.Server({ server, path: '/stream' });
 
 wss.on('connection', (ws, req) => {
   // Extract cam ID and auth token from query string
-  // e.g. ws://localhost:3000/stream?id=cam_25&token=eyJ...
+  // e.g. ws://localhost:3000/stream?id=feed_25&token=eyJ...
   const urlParams = new URLSearchParams(req.url.replace('/stream', '').replace('?', ''));
   const camId     = urlParams.get('id');
   const token     = urlParams.get('token') ||
@@ -273,14 +273,14 @@ wss.on('connection', (ws, req) => {
   }
 
   if (!camId) {
-    ws.close(4002, 'No camera ID specified');
+    ws.close(4002, 'No feed ID specified');
     return;
   }
 
-  const cameras = getCameras();
-  const cam     = cameras.find(c => c.id === camId);
+  const feeds = getFeeds();
+  const cam     = feeds.find(c => c.id === camId);
   if (!cam) {
-    ws.close(4004, `Camera ${camId} not found`);
+    ws.close(4004, `Feed ${camId} not found`);
     return;
   }
 
