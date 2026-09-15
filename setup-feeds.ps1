@@ -1,5 +1,5 @@
 # setup-feeds.ps1
-# Run this once to create feeds.json with your 17 configured feeds.
+# Run this once to create feeds.json with all 23 configured feeds.
 # Uses WriteAllText to avoid the UTF-8 BOM issue with Out-File.
 
 $feeds = '[
@@ -8,6 +8,7 @@ $feeds = '[
   { "id": "feed_27", "name": "Feed 27", "ip": "192.168.29.27", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.27:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_29", "name": "Feed 29", "ip": "192.168.29.29", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.29:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_31", "name": "Feed 31", "ip": "192.168.29.31", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.31:554/cam/realmonitor?channel=1&subtype=0" },
+  { "id": "feed_42", "name": "Feed 42", "ip": "192.168.29.42", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.42:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_43", "name": "Feed 43", "ip": "192.168.29.43", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.43:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_44", "name": "Feed 44", "ip": "192.168.29.44", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.44:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_45", "name": "Feed 45", "ip": "192.168.29.45", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.45:554/cam/realmonitor?channel=1&subtype=0" },
@@ -19,7 +20,12 @@ $feeds = '[
   { "id": "feed_51", "name": "Feed 51", "ip": "192.168.29.51", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.51:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_52", "name": "Feed 52", "ip": "192.168.29.52", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.52:554/cam/realmonitor?channel=1&subtype=0" },
   { "id": "feed_53", "name": "Feed 53", "ip": "192.168.29.53", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.53:554/cam/realmonitor?channel=1&subtype=0" },
-  { "id": "feed_58", "name": "Feed 58", "ip": "192.168.29.58", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.58:554/cam/realmonitor?channel=1&subtype=0" }
+  { "id": "feed_58", "name": "Feed 58", "ip": "192.168.29.58", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.58:554/cam/realmonitor?channel=1&subtype=0" },
+  { "id": "feed_201", "name": "Feed 201", "ip": "192.168.29.201", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.201:554/cam/realmonitor?channel=1&subtype=0" },
+  { "id": "feed_202", "name": "Feed 202", "ip": "192.168.29.202", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.202:554/cam/realmonitor?channel=1&subtype=0" },
+  { "id": "feed_203", "name": "Feed 203", "ip": "192.168.29.203", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.203:554/cam/realmonitor?channel=1&subtype=0" },
+  { "id": "feed_204", "name": "Feed 204", "ip": "192.168.29.204", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.204:554/cam/realmonitor?channel=1&subtype=0" },
+  { "id": "feed_205", "name": "Feed 205", "ip": "192.168.29.205", "port": 554, "username": "admin", "password": "admin@123", "channel": 1, "subtype": 0, "url": "rtsp://admin:admin%40123@192.168.29.205:554/cam/realmonitor?channel=1&subtype=0" }
 ]'
 
 # Write WITHOUT BOM (fixes the silent JSON parse failure on Windows)
@@ -29,7 +35,8 @@ $feeds = '[
   (New-Object System.Text.UTF8Encoding $false)
 )
 
-Write-Host "[OK] feeds.json written successfully with $((Get-Content "$PSScriptRoot\feeds.json" | ConvertFrom-Json).Count) feeds." -ForegroundColor Green
+$count = (Get-Content "$PSScriptRoot\feeds.json" -Raw | ConvertFrom-Json).Count
+Write-Host "[OK] feeds.json written with $count feeds." -ForegroundColor Green
 
 # Restart the service to pick up the new config
 $svc = Get-Service -Name "StreamingService" -ErrorAction SilentlyContinue
@@ -37,7 +44,7 @@ if ($svc) {
   Write-Host "[...] Restarting StreamingService..." -ForegroundColor Yellow
   Restart-Service StreamingService
   Start-Sleep -Seconds 3
-  Write-Host "[OK] Service restarted. Open http://localhost:3000" -ForegroundColor Green
+  Write-Host "[OK] Done! Open http://localhost:3000" -ForegroundColor Green
 } else {
   Write-Host "[INFO] StreamingService not installed yet. Run install-service.ps1 first." -ForegroundColor Yellow
 }
