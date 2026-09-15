@@ -10,7 +10,7 @@ param(
   [string]$InstallDir   = $PSScriptRoot
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 Write-Host ""
 Write-Host "[Streaming Service] Windows Service Installer" -ForegroundColor Cyan
@@ -89,8 +89,9 @@ if (-not (Test-Path $nssmExe)) {
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing) {
   Write-Host "[...] Removing previous service installation..." -ForegroundColor Yellow
-  & $nssmExe stop   $ServiceName confirm 2>$null
-  & $nssmExe remove $ServiceName confirm 2>$null
+  try { & $nssmExe stop   $ServiceName confirm 2>$null } catch {}
+  Start-Sleep -Seconds 1
+  try { & $nssmExe remove $ServiceName confirm 2>$null } catch {}
   Start-Sleep -Seconds 2
 }
 
