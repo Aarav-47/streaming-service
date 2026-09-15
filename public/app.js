@@ -145,15 +145,57 @@ async function loadFeeds() {
 }
 
 let audioActiveId = null;
-let draggedCard = null;
+let draggedCard   = null;
+let currentPage   = 1;
+let pageSize      = 4; // Default to 4 view (2x2)
+
+const pagerWrap     = document.getElementById('pager-wrap');
+const btnPrevPage   = document.getElementById('btn-prev-page');
+const btnNextPage   = document.getElementById('btn-next-page');
+const pageIndicator = document.getElementById('page-indicator');
+
+if (btnPrevPage && btnNextPage) {
+  btnPrevPage.addEventListener('click', () => {
+    if (currentPage > 1) {
+      currentPage--;
+      renderGrid();
+    }
+  });
+  btnNextPage.addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(feeds.length / (pageSize || 1)));
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderGrid();
+    }
+  });
+}
 
 function renderGrid() {
   destroyAllPlayers();
   audioActiveId = null;
   grid.innerHTML = '';
 
-  feeds.forEach((cam, idx) => {
-    const sno = String(idx + 1).padStart(2, '0');
+  let visibleFeeds = feeds;
+  let offset = 0;
+
+  if (pageSize > 0) {
+    if (pagerWrap) pagerWrap.classList.remove('hidden');
+    const totalPages = Math.max(1, Math.ceil(feeds.length / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    offset = (currentPage - 1) * pageSize;
+    visibleFeeds = feeds.slice(offset, offset + pageSize);
+
+    if (pageIndicator) pageIndicator.textContent = `${currentPage} / ${totalPages}`;
+    if (btnPrevPage) btnPrevPage.disabled = (currentPage <= 1);
+    if (btnNextPage) btnNextPage.disabled = (currentPage >= totalPages);
+  } else {
+    if (pagerWrap) pagerWrap.classList.add('hidden');
+  }
+
+  visibleFeeds.forEach((cam, idx) => {
+    const sno = String(offset + idx + 1).padStart(2, '0');
     const card = document.createElement('div');
     card.className = 'cam-card';
     card.id = `card-${cam.id}`;
@@ -267,22 +309,31 @@ window.moveFeed = function(id, dir) {
 };
 
 function onOrderChanged() {
-  updateSnoBadges();
   const currentIds = Array.from(grid.children).map(c => c.dataset.id);
   const feedMap = new Map(feeds.map(f => [f.id, f]));
-  feeds = currentIds.map(id => feedMap.get(id)).filter(Boolean);
-  localStorage.setItem('feed_order', JSON.stringify(currentIds));
+  if (pageSize > 0) {
+    const offset = (currentPage - 1) * pageSize;
+    for (let i = 0; i < currentIds.length; i++) {
+      feeds[offset + i] = feedMap.get(currentIds[i]);
+    }
+  } else {
+    feeds = currentIds.map(id => feedMap.get(id)).filter(Boolean);
+  }
+  updateSnoBadges();
+  const allOrderedIds = feeds.map(f => f.id);
+  localStorage.setItem('feed_order', JSON.stringify(allOrderedIds));
   apiFetch('/api/feeds/reorder', {
     method: 'POST',
-    body: { orderedIds: currentIds }
+    body: { orderedIds: allOrderedIds }
   }).catch(() => {});
 }
 
 function updateSnoBadges() {
+  const offset = pageSize > 0 ? (currentPage - 1) * pageSize : 0;
   Array.from(grid.children).forEach((card, idx) => {
     const snoEl = card.querySelector('.cam-sno');
     if (snoEl) {
-      snoEl.textContent = String(idx + 1).padStart(2, '0');
+      snoEl.textContent = String(offset + idx + 1).padStart(2, '0');
     }
   });
 }
@@ -400,7 +451,25 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    grid.className = `grid g${btn.dataset.grid}`;
+
+    const g = parseInt(btn.dataset.grid, 10);
+    currentPage = 1;
+
+    if (g === 1) {
+      pageSize = 1;
+      grid.className = 'grid g1';
+    } else if (g === 4) {
+      pageSize = 4;
+      grid.className = 'grid g2';
+    } else if (g === 9) {
+      pageSize = 9;
+      grid.className = 'grid g3';
+    } else {
+      pageSize = 0; // All
+      grid.className = 'grid g0';
+    }
+
+    renderGrid();
   });
 });
 

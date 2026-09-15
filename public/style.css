@@ -153,6 +153,23 @@ html, body {
   background: var(--accent); color: #fff;
 }
 
+.pager-controls {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 3px 6px;
+}
+.pager-btn {
+  background: none; border: none; color: var(--text2);
+  padding: 3px 7px; border-radius: 5px; font-size: 11px;
+  cursor: pointer; transition: all .15s;
+}
+.pager-btn:hover { background: var(--border); color: #fff; }
+.pager-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-indicator {
+  font-size: 12px; font-weight: 700; color: var(--text);
+  min-width: 36px; text-align: center;
+}
+
 /* ── App Layout ───────────────────────────── */
 .app { display: flex; flex-direction: column; height: 100vh; }
 .grid-wrap {

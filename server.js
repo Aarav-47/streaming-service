@@ -68,6 +68,7 @@ function getOrCreateStream(cam) {
   // FFmpeg: RTSP -> MPEG1 video + MP2 audio piped to stdout
   const args = [
     '-loglevel', 'error',
+    '-threads', '1',
     '-reorder_queue_size', '4000',
     '-rtsp_transport', 'tcp',
     '-fflags', '+nobuffer+genpts',
@@ -75,7 +76,7 @@ function getOrCreateStream(cam) {
     '-i', cam.url,
     '-f', 'mpegts',
     '-codec:v', 'mpeg1video',
-    '-b:v', '1200k',
+    '-b:v', '1000k',
     '-r', '25',
     '-bf', '0',
     '-codec:a', 'mp2',
