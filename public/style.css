@@ -192,6 +192,8 @@ html, body {
   transition: color .15s;
 }
 .cam-btn:hover         { color: var(--text); }
+.cam-btn.active        { color: var(--green); }
+.cam-btn.active:hover  { color: #4ade80; }
 .cam-btn.del:hover     { color: var(--red); }
 
 /* canvas fills the card; aspect-ratio ensures correct sizing */

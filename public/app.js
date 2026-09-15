@@ -130,8 +130,11 @@ async function loadFeeds() {
   }
 }
 
+let audioActiveId = null;
+
 function renderGrid() {
   destroyAllPlayers();
+  audioActiveId = null;
   grid.innerHTML = '';
 
   feeds.forEach((cam) => {
@@ -146,8 +149,14 @@ function renderGrid() {
     const canvas = document.createElement('canvas');
     card.innerHTML = `
       <div class="cam-bar">
-        <span class="cam-name"><i class="fa-solid fa-video" style="margin-right:5px;opacity:.6"></i>${cam.name}</span>
+        <span class="cam-name" id="name-${cam.id}"><i class="fa-solid fa-video" style="margin-right:5px;opacity:.6"></i>${escapeHtml(cam.name)}</span>
         <div class="cam-actions">
+          <button class="cam-btn audio-btn" id="audio-${cam.id}" title="Unmute Audio" onclick="toggleAudio('${cam.id}')">
+            <i class="fa-solid fa-volume-xmark"></i>
+          </button>
+          <button class="cam-btn" title="Rename Feed" onclick="renameFeed('${cam.id}')">
+            <i class="fa-solid fa-pen"></i>
+          </button>
           <button class="cam-btn" title="Fullscreen" onclick="toggleFS('${cam.id}')">
             <i class="fa-solid fa-expand"></i>
           </button>
@@ -160,29 +169,116 @@ function renderGrid() {
     card.appendChild(canvas);
     grid.appendChild(card);
 
-    // Create JSMpeg player — connects to our custom WebSocket stream engine
-    players[cam.id] = new JSMpeg.Player(wsUrl, {
-      canvas,
-      autoplay: true,
-      audio:    false,
-      loop:     false,
-      onStalled: () => {
-        // Auto-reconnect after 3s stall
-        setTimeout(() => {
-          if (players[cam.id]) {
-            players[cam.id].destroy();
-            delete players[cam.id];
-            players[cam.id] = new JSMpeg.Player(wsUrl, { canvas, autoplay: true, audio: false });
-          }
-        }, 3000);
-      }
-    });
+    initPlayer(cam.id, wsUrl, canvas);
   });
+}
+
+function initPlayer(camId, wsUrl, canvas) {
+  // Create JSMpeg player with audio enabled, muted by default
+  const player = new JSMpeg.Player(wsUrl, {
+    canvas,
+    autoplay: true,
+    audio:    true,
+    loop:     false,
+    onStalled: () => {
+      setTimeout(() => {
+        if (players[camId]) {
+          players[camId].destroy();
+          delete players[camId];
+          initPlayer(camId, wsUrl, canvas);
+        }
+      }, 3000);
+    }
+  });
+
+  // Start with audio muted
+  player.volume = 0;
+  players[camId] = player;
 }
 
 function destroyAllPlayers() {
   Object.values(players).forEach((p) => { try { p.destroy(); } catch (_) {} });
   players = {};
+  audioActiveId = null;
+}
+
+// ── Audio Mute / Unmute ───────────────────────────
+window.toggleAudio = function(id) {
+  const p = players[id];
+  if (!p) return;
+  const btn = document.getElementById(`audio-${id}`);
+  const isMuted = (p.volume === 0);
+
+  if (isMuted) {
+    // Mute previous active feed so feeds don't overlap
+    if (audioActiveId && audioActiveId !== id && players[audioActiveId]) {
+      players[audioActiveId].volume = 0;
+      const prevBtn = document.getElementById(`audio-${audioActiveId}`);
+      if (prevBtn) {
+        prevBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+        prevBtn.classList.remove('active');
+        prevBtn.title = 'Unmute Audio';
+      }
+    }
+
+    // Unlock WebAudio context on user gesture
+    if (p.audioOut) {
+      if (p.audioOut.unlock) p.audioOut.unlock();
+      if (p.audioOut.destination && p.audioOut.destination.context && p.audioOut.destination.context.state === 'suspended') {
+        p.audioOut.destination.context.resume();
+      }
+    }
+
+    p.volume = 1;
+    audioActiveId = id;
+
+    if (btn) {
+      btn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+      btn.classList.add('active');
+      btn.title = 'Mute Audio';
+    }
+  } else {
+    p.volume = 0;
+    if (audioActiveId === id) audioActiveId = null;
+
+    if (btn) {
+      btn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+      btn.classList.remove('active');
+      btn.title = 'Unmute Audio';
+    }
+  }
+};
+
+// ── Rename Feed ───────────────────────────────────
+window.renameFeed = async function(id) {
+  const feed = feeds.find(f => f.id === id);
+  const current = feed ? feed.name : '';
+  const newName = prompt('Enter new name for this feed:', current);
+  if (!newName || !newName.trim() || newName.trim() === current) return;
+
+  try {
+    const r = await apiFetch(`/api/feeds/${id}/rename`, {
+      method: 'PATCH',
+      body: { name: newName.trim() }
+    });
+    if (r.success) {
+      if (feed) feed.name = newName.trim();
+      const nameEl = document.getElementById(`name-${id}`);
+      if (nameEl) {
+        nameEl.innerHTML = `<i class="fa-solid fa-video" style="margin-right:5px;opacity:.6"></i>${escapeHtml(newName.trim())}`;
+      }
+    } else {
+      alert(r.message || 'Failed to rename feed');
+    }
+  } catch {
+    alert('Network error renaming feed');
+  }
+};
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
 }
 
 // ── Grid Layout ───────────────────────────────────

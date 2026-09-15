@@ -38,7 +38,8 @@ console.log(`[Stream Engine] FFmpeg binary: ${FFMPEG_BIN}`);
 function getFeeds() {
   try {
     if (!fs.existsSync(FEEDS_FILE)) return [];
-    return JSON.parse(fs.readFileSync(FEEDS_FILE, 'utf8'));
+    const raw = fs.readFileSync(FEEDS_FILE, 'utf8').replace(/^\uFEFF/, '');
+    return JSON.parse(raw);
   } catch (e) {
     console.error('[Config] Error reading feeds.json:', e.message);
     return [];
@@ -64,7 +65,7 @@ function getOrCreateStream(cam) {
   const session = { ffmpegProc: null, clients: new Set(), header: null };
   streamSessions.set(cam.id, session);
 
-  // FFmpeg: RTSP -> MPEG1 video piped to stdout
+  // FFmpeg: RTSP -> MPEG1 video + MP2 audio piped to stdout
   const args = [
     '-loglevel', 'quiet',
     '-rtsp_transport', 'tcp',
@@ -73,8 +74,11 @@ function getOrCreateStream(cam) {
     '-codec:v', 'mpeg1video',
     '-codec:a', 'mp2',
     '-b:v', '1000k',
+    '-b:a', '128k',
+    '-ar', '44100',
+    '-ac', '1',
     '-r', '25',
-    '-bf', '0',       // no B-frames for lowest latency
+    '-bf', '0',
     '-muxdelay', '0.001',
     'pipe:1'
   ];
@@ -224,6 +228,19 @@ app.put('/api/feeds/:id', authMiddleware, (req, res) => {
     streamSessions.delete(req.params.id);
   }
   res.json({ success: true });
+});
+
+app.patch('/api/feeds/:id/rename', authMiddleware, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Name is required' });
+  }
+  const feeds = getFeeds();
+  const idx = feeds.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ success: false, message: 'Feed not found' });
+  feeds[idx].name = name.trim();
+  saveFeeds(feeds);
+  res.json({ success: true, name: feeds[idx].name });
 });
 
 app.delete('/api/feeds/:id', authMiddleware, (req, res) => {
