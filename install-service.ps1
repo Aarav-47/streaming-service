@@ -100,16 +100,16 @@ $nodePath = (Get-Command node).Source
 New-Item -ItemType Directory -Force -Path "$InstallDir\logs" | Out-Null
 
 & $nssmExe install  $ServiceName $nodePath
-& $nssmExe set      $ServiceName Arguments     "server.js"
-& $nssmExe set      $ServiceName AppDirectory  $InstallDir
-& $nssmExe set      $ServiceName DisplayName   $DisplayName
-& $nssmExe set      $ServiceName Description   "Streaming Service - Live video feeds via Cloudflare Tunnel"
-& $nssmExe set      $ServiceName Start         SERVICE_AUTO_START
+& $nssmExe set      $ServiceName AppParameters  "server.js"
+& $nssmExe set      $ServiceName AppDirectory   $InstallDir
+& $nssmExe set      $ServiceName DisplayName    $DisplayName
+& $nssmExe set      $ServiceName Description    "Streaming Service - Live video feeds via Cloudflare Tunnel"
+& $nssmExe set      $ServiceName Start          SERVICE_AUTO_START
 & $nssmExe set      $ServiceName AppRestartDelay 5000
-& $nssmExe set      $ServiceName AppStdout     "$InstallDir\logs\service.log"
-& $nssmExe set      $ServiceName AppStderr     "$InstallDir\logs\service-error.log"
-& $nssmExe set      $ServiceName AppRotateFiles 1
-& $nssmExe set      $ServiceName AppRotateBytes 5242880
+& $nssmExe set      $ServiceName AppStdout      "$InstallDir\logs\service.log"
+& $nssmExe set      $ServiceName AppStderr      "$InstallDir\logs\service-error.log"
+& $nssmExe set      $ServiceName AppRotateFiles  1
+& $nssmExe set      $ServiceName AppRotateBytes  5242880
 
 # -- 7. Start the service
 Write-Host "[...] Starting service..." -ForegroundColor Yellow
