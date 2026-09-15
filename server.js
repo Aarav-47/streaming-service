@@ -68,6 +68,7 @@ function getOrCreateStream(cam) {
   // FFmpeg: RTSP -> MPEG1 video + MP2 audio piped to stdout
   const args = [
     '-loglevel', 'error',
+    '-hwaccel', 'auto',
     '-threads', '1',
     '-reorder_queue_size', '4000',
     '-rtsp_transport', 'tcp',
@@ -76,11 +77,12 @@ function getOrCreateStream(cam) {
     '-i', cam.url,
     '-f', 'mpegts',
     '-codec:v', 'mpeg1video',
-    '-b:v', '1000k',
-    '-r', '25',
+    '-s', '640x360',
+    '-b:v', '600k',
+    '-r', '20',
     '-bf', '0',
     '-codec:a', 'mp2',
-    '-b:a', '128k',
+    '-b:a', '96k',
     '-ar', '44100',
     '-ac', '1',
     '-muxdelay', '0.001',
@@ -131,7 +133,13 @@ function stopStreamIfEmpty(camId) {
   if (!session) return;
   if (session.clients.size === 0) {
     console.log(`[Stream] No viewers left for [${camId}], stopping FFmpeg.`);
-    try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
+    if (session.ffmpegProc) {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(session.ffmpegProc.pid), '/f', '/t'], { stdio: 'ignore' });
+      } else {
+        try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
+      }
+    }
     streamSessions.delete(camId);
   }
 }
@@ -362,8 +370,17 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown: kill all FFmpeg processes
-process.on('SIGTERM', () => {
+function cleanupAll() {
   console.log('[Server] Shutting down — killing all FFmpeg processes...');
-  streamSessions.forEach((s) => { try { s.ffmpegProc.kill('SIGKILL'); } catch (_) {} });
-  process.exit(0);
-});
+  streamSessions.forEach((s) => {
+    if (s.ffmpegProc) {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(s.ffmpegProc.pid), '/f', '/t'], { stdio: 'ignore' });
+      } else {
+        try { s.ffmpegProc.kill('SIGKILL'); } catch (_) {}
+      }
+    }
+  });
+}
+process.on('SIGTERM', () => { cleanupAll(); process.exit(0); });
+process.on('SIGINT', () => { cleanupAll(); process.exit(0); });
