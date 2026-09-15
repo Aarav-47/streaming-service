@@ -243,6 +243,27 @@ app.patch('/api/feeds/:id/rename', authMiddleware, (req, res) => {
   res.json({ success: true, name: feeds[idx].name });
 });
 
+app.post('/api/feeds/reorder', authMiddleware, (req, res) => {
+  const { orderedIds } = req.body || {};
+  if (!Array.isArray(orderedIds)) {
+    return res.status(400).json({ success: false, message: 'orderedIds array required' });
+  }
+  const feeds = getFeeds();
+  const feedMap = new Map(feeds.map(f => [f.id, f]));
+  const reordered = [];
+  for (const id of orderedIds) {
+    if (feedMap.has(id)) {
+      reordered.push(feedMap.get(id));
+      feedMap.delete(id);
+    }
+  }
+  for (const f of feedMap.values()) {
+    reordered.push(f);
+  }
+  saveFeeds(reordered);
+  res.json({ success: true, count: reordered.length });
+});
+
 app.delete('/api/feeds/:id', authMiddleware, (req, res) => {
   const feeds = getFeeds().filter(c => c.id !== req.params.id);
   saveFeeds(feeds);

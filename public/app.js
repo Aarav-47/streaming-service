@@ -122,7 +122,21 @@ async function loadFeeds() {
   try {
     const r = await apiFetch('/api/feeds');
     if (r.success) {
-      feeds = r.feeds;
+      const savedOrder = JSON.parse(localStorage.getItem('feed_order') || 'null');
+      if (Array.isArray(savedOrder) && savedOrder.length) {
+        const feedMap = new Map(r.feeds.map(f => [f.id, f]));
+        const ordered = [];
+        for (const id of savedOrder) {
+          if (feedMap.has(id)) {
+            ordered.push(feedMap.get(id));
+            feedMap.delete(id);
+          }
+        }
+        for (const f of feedMap.values()) ordered.push(f);
+        feeds = ordered;
+      } else {
+        feeds = r.feeds;
+      }
       renderGrid();
     }
   } catch (err) {
@@ -131,16 +145,19 @@ async function loadFeeds() {
 }
 
 let audioActiveId = null;
+let draggedCard = null;
 
 function renderGrid() {
   destroyAllPlayers();
   audioActiveId = null;
   grid.innerHTML = '';
 
-  feeds.forEach((cam) => {
+  feeds.forEach((cam, idx) => {
+    const sno = String(idx + 1).padStart(2, '0');
     const card = document.createElement('div');
     card.className = 'cam-card';
     card.id = `card-${cam.id}`;
+    card.dataset.id = cam.id;
 
     // Build WebSocket URL: wss://<host>/stream?id=<id>&token=<jwt>
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -149,15 +166,24 @@ function renderGrid() {
     const canvas = document.createElement('canvas');
     card.innerHTML = `
       <div class="cam-bar">
-        <span class="cam-name" id="name-${cam.id}"><i class="fa-solid fa-video" style="margin-right:5px;opacity:.6"></i>${escapeHtml(cam.name)}</span>
+        <div class="cam-info">
+          <span class="cam-sno">${sno}</span>
+          <span class="cam-name" id="name-${cam.id}"><i class="fa-solid fa-video" style="margin-right:4px;opacity:.6"></i>${escapeHtml(cam.name)}</span>
+        </div>
         <div class="cam-actions">
+          <button class="cam-btn move-btn" title="Move Left" onclick="moveFeed('${cam.id}', -1)">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+          <button class="cam-btn move-btn" title="Move Right" onclick="moveFeed('${cam.id}', 1)">
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
           <button class="cam-btn audio-btn" id="audio-${cam.id}" title="Unmute Audio" onclick="toggleAudio('${cam.id}')">
             <i class="fa-solid fa-volume-xmark"></i>
           </button>
-          <button class="cam-btn" title="Rename Feed" onclick="renameFeed('${cam.id}')">
+          <button class="cam-btn rename-btn" title="Rename Feed" onclick="renameFeed('${cam.id}')">
             <i class="fa-solid fa-pen"></i>
           </button>
-          <button class="cam-btn" title="Fullscreen" onclick="toggleFS('${cam.id}')">
+          <button class="cam-btn fs-btn" title="Fullscreen" onclick="toggleFS('${cam.id}')">
             <i class="fa-solid fa-expand"></i>
           </button>
           <button class="cam-btn del" title="Remove" onclick="removeCam('${cam.id}')">
@@ -169,7 +195,95 @@ function renderGrid() {
     card.appendChild(canvas);
     grid.appendChild(card);
 
+    setupDragAndDrop(card);
     initPlayer(cam.id, wsUrl, canvas);
+  });
+}
+
+function setupDragAndDrop(card) {
+  card.setAttribute('draggable', 'true');
+
+  card.addEventListener('dragstart', (e) => {
+    draggedCard = card;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+  });
+
+  card.addEventListener('dragend', () => {
+    if (draggedCard) draggedCard.classList.remove('dragging');
+    draggedCard = null;
+    document.querySelectorAll('.cam-card').forEach(c => c.classList.remove('drag-over'));
+  });
+
+  card.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedCard && draggedCard !== card) {
+      card.classList.add('drag-over');
+    }
+  });
+
+  card.addEventListener('dragleave', () => {
+    card.classList.remove('drag-over');
+  });
+
+  card.addEventListener('drop', (e) => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    if (!draggedCard || draggedCard === card) return;
+
+    const allCards = Array.from(grid.children);
+    const draggedIdx = allCards.indexOf(draggedCard);
+    const targetIdx = allCards.indexOf(card);
+
+    if (draggedIdx < targetIdx) {
+      grid.insertBefore(draggedCard, card.nextElementSibling);
+    } else {
+      grid.insertBefore(draggedCard, card);
+    }
+
+    onOrderChanged();
+  });
+}
+
+// ── Reordering Helpers ────────────────────────────
+window.moveFeed = function(id, dir) {
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  if (dir === -1) {
+    const prev = card.previousElementSibling;
+    if (prev) {
+      grid.insertBefore(card, prev);
+      onOrderChanged();
+    }
+  } else if (dir === 1) {
+    const next = card.nextElementSibling;
+    if (next) {
+      grid.insertBefore(card, next.nextElementSibling);
+      onOrderChanged();
+    }
+  }
+};
+
+function onOrderChanged() {
+  updateSnoBadges();
+  const currentIds = Array.from(grid.children).map(c => c.dataset.id);
+  const feedMap = new Map(feeds.map(f => [f.id, f]));
+  feeds = currentIds.map(id => feedMap.get(id)).filter(Boolean);
+  localStorage.setItem('feed_order', JSON.stringify(currentIds));
+  apiFetch('/api/feeds/reorder', {
+    method: 'POST',
+    body: { orderedIds: currentIds }
+  }).catch(() => {});
+}
+
+function updateSnoBadges() {
+  Array.from(grid.children).forEach((card, idx) => {
+    const snoEl = card.querySelector('.cam-sno');
+    if (snoEl) {
+      snoEl.textContent = String(idx + 1).padStart(2, '0');
+    }
   });
 }
 
@@ -265,7 +379,7 @@ window.renameFeed = async function(id) {
       if (feed) feed.name = newName.trim();
       const nameEl = document.getElementById(`name-${id}`);
       if (nameEl) {
-        nameEl.innerHTML = `<i class="fa-solid fa-video" style="margin-right:5px;opacity:.6"></i>${escapeHtml(newName.trim())}`;
+        nameEl.innerHTML = `<i class="fa-solid fa-video" style="margin-right:4px;opacity:.6"></i>${escapeHtml(newName.trim())}`;
       }
     } else {
       alert(r.message || 'Failed to rename feed');
