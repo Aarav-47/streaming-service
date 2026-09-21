@@ -132,24 +132,32 @@ Get-Content .\logs\service.log -Tail 50 -Wait
 
 ---
 
-## feeds.json Format
-> ⚠️ `feeds.json` is in `.gitignore` — **never commit feed credentials to Git!**
+## macOS Backup Server Setup (Auto-Failover)
 
-```json
-[
-  {
-    "id": "feed_1",
-    "name": "Main Entrance",
-    "ip": "192.168.1.50",
-    "port": 554,
-    "username": "admin",
-    "password": "your_password",
-    "channel": 1,
-    "subtype": 0,
-    "url": "rtsp://admin:your_password@192.168.1.50:554/cam/realmonitor?channel=1&subtype=0"
-  }
-]
+If your main Windows PC is turned off, restarted, or loses power, your Mac Mini will automatically back it up with **zero downtime** on the same domain (`https://aa.horizonhuedigital.in`).
+
+### 1. On your Windows PC (Get Cloudflare Tunnel Token)
+Open PowerShell and run:
+```powershell
+cloudflared tunnel token streams
 ```
+*Copy the token string printed to your terminal.*
+
+### 2. On your Mac Mini (One-Step Installer)
+Open Terminal and run:
+```bash
+# Clone the repository
+git clone https://github.com/Aarav-47/streaming-service.git ~/streaming-service
+cd ~/streaming-service
+
+# Run installer (installs Node.js, FFmpeg, Cloudflared, LaunchAgent daemon)
+./install-macos.sh "<PASTE_TUNNEL_TOKEN_HERE>"
+```
+
+### 3. Verification
+- **Local Dashboard:** Open `http://localhost:3000` in Safari/Chrome on your Mac.
+- **Failover Test:** Turn off your Windows PC or run `Stop-Service StreamingService` on Windows.
+- Visit `https://aa.horizonhuedigital.in` — Cloudflare will automatically and instantly route all live traffic to your Mac Mini!
 
 ---
 
