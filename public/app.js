@@ -134,6 +134,7 @@ function showApp() {
   loginScreen.classList.add('hidden');
   app.classList.remove('hidden');
   loadFeeds();
+  checkGitSyncStatus();
 }
 
 // ── API Helper ────────────────────────────────────
@@ -520,6 +521,143 @@ function updateSnoBadges() {
   });
 }
 
+function showFeedError(camId, err) {
+  const overlay = document.getElementById(`overlay-${camId}`);
+  if (!overlay) return;
+
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <div class="cam-error-box">
+      <div class="status-badge ${err.status || 'error'}">
+        <i class="fa-solid ${err.icon || 'fa-triangle-exclamation'}"></i>
+        <span>${escapeHtml(err.short || 'Error')}</span>
+      </div>
+      <div class="status-msg">${escapeHtml(err.message || 'Stream connection failed')}</div>
+      <div class="status-actions">
+        <button class="status-btn retry" onclick="event.stopPropagation(); startFeed('${camId}')">
+          <i class="fa-solid fa-rotate-right"></i> Retry
+        </button>
+        <button class="status-btn edit" onclick="event.stopPropagation(); editCam('${camId}')">
+          <i class="fa-solid fa-pen"></i> Edit
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function handleFeedCloseError(camId, code, reason) {
+  feedPlaying[camId] = false;
+  if (players[camId]) {
+    try { players[camId].destroy(); } catch (_) {}
+    delete players[camId];
+  }
+
+  const playBtn = document.getElementById(`playbtn-${camId}`);
+  if (playBtn) {
+    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+    playBtn.classList.remove('playing');
+    playBtn.title = 'Start Feed';
+  }
+
+  updatePlayAllBtn();
+
+  // 1. Check if WebSocket gave us a specific diagnostic code
+  if (code === 4401 || (reason && reason.toLowerCase().includes('auth'))) {
+    showFeedError(camId, {
+      status: 'auth_error',
+      short: 'Auth Error',
+      icon: 'fa-key',
+      message: reason || 'Invalid username or password'
+    });
+    return;
+  }
+
+  if (code === 4408 || (reason && reason.toLowerCase().includes('offline'))) {
+    showFeedError(camId, {
+      status: 'offline',
+      short: 'Feed Offline',
+      icon: 'fa-wifi-slash',
+      message: reason || 'Feed is offline or unreachable'
+    });
+    return;
+  }
+
+  if (code === 4404 || (reason && reason.toLowerCase().includes('not found'))) {
+    showFeedError(camId, {
+      status: 'not_found',
+      short: 'Stream Not Found',
+      icon: 'fa-circle-xmark',
+      message: reason || 'RTSP channel or stream not found (404)'
+    });
+    return;
+  }
+
+  if (code === 4501 || (reason && reason.toLowerCase().includes('corrupted'))) {
+    showFeedError(camId, {
+      status: 'invalid_data',
+      short: 'Stream Error',
+      icon: 'fa-triangle-exclamation',
+      message: reason || 'Feed returned invalid or unsupported video'
+    });
+    return;
+  }
+
+  // 2. Active network diagnostic probe
+  const overlay = document.getElementById(`overlay-${camId}`);
+  if (overlay) {
+    overlay.innerHTML = `
+      <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+      <span class="overlay-label">Diagnosing Feed...</span>
+    `;
+    overlay.classList.remove('hidden');
+  }
+
+  try {
+    const diag = await apiFetch(`/api/feeds/${camId}/check`);
+    if (diag.success && !diag.reachable) {
+      showFeedError(camId, {
+        status: 'offline',
+        short: 'Feed Offline',
+        icon: 'fa-wifi-slash',
+        message: diag.message || 'Host is unreachable / connection timed out'
+      });
+      return;
+    } else if (diag.status === 'auth_error') {
+      showFeedError(camId, {
+        status: 'auth_error',
+        short: 'Auth Error',
+        icon: 'fa-key',
+        message: diag.message || 'Invalid username or password'
+      });
+      return;
+    }
+  } catch (_) {}
+
+  // 3. Fallback generic stream error
+  showFeedError(camId, {
+    status: 'error',
+    short: 'Stream Error',
+    icon: 'fa-triangle-exclamation',
+    message: reason || `Stream exited (code ${code || 'failed'})`
+  });
+}
+
+window.editCam = function(id) {
+  const cam = feeds.find(c => c.id === id);
+  if (!cam) return;
+  document.getElementById('edit-id').value = cam.id;
+  modalTitle.textContent = `Edit Feed: ${cam.name}`;
+  document.getElementById('c-name').value = cam.name;
+  document.getElementById('c-ip').value   = cam.ip;
+  document.getElementById('c-port').value = cam.port || 554;
+  document.getElementById('c-user').value = cam.username || 'admin';
+  document.getElementById('c-pass').value = cam.password || '';
+  document.getElementById('c-sub').value  = String(cam.subtype || 0);
+  document.getElementById('c-ch').value   = String(cam.channel || 1);
+  camErr.textContent = '';
+  modal.classList.remove('hidden');
+};
+
 function initPlayer(camId, wsUrl, canvas) {
   let firstFrame = false;
   const overlay = document.getElementById(`overlay-${camId}`);
@@ -536,6 +674,11 @@ function initPlayer(camId, wsUrl, canvas) {
         if (overlay) overlay.classList.add('hidden');
       }
     },
+    onSourceCompleted: () => {
+      if (!firstFrame && feedPlaying[camId]) {
+        handleFeedCloseError(camId, 4500, 'Stream ended without video frames');
+      }
+    },
     onStalled: () => {
       setTimeout(() => {
         if (players[camId] && feedPlaying[camId]) {
@@ -550,6 +693,27 @@ function initPlayer(camId, wsUrl, canvas) {
       }, 3000);
     }
   });
+
+  // Attach error & close listeners directly to WebSocket instance
+  if (player.source && player.source.socket) {
+    player.source.socket.addEventListener('close', (e) => {
+      if (!firstFrame && feedPlaying[camId]) {
+        handleFeedCloseError(camId, e.code, e.reason);
+      }
+    });
+    player.source.socket.addEventListener('error', () => {
+      if (!firstFrame && feedPlaying[camId]) {
+        handleFeedCloseError(camId, 4408, 'WebSocket network failure');
+      }
+    });
+  }
+
+  // Safety watchdog: if after 7.5 seconds no frame has decoded, trigger diagnostic check
+  setTimeout(() => {
+    if (!firstFrame && feedPlaying[camId]) {
+      handleFeedCloseError(camId, 4408, 'Connection timed out (7s)');
+    }
+  }, 7500);
 
   // Start with audio muted
   player.volume = 0;
@@ -818,5 +982,70 @@ document.getElementById('btn-wake').addEventListener('click', async () => {
   }
 });
 
+// ── Git Auto-Sync Status & Pull Controls ──────────
+const deskSyncLabel = document.getElementById('desk-sync-label');
+const mSyncLabel    = document.getElementById('m-sync-label');
+const btnSyncDesk   = document.getElementById('btn-sync-desk');
+const btnMSync      = document.getElementById('btn-m-sync');
+
+let isSyncing = false;
+
+async function checkGitSyncStatus(triggerPull = false) {
+  try {
+    if (triggerPull) {
+      if (isSyncing) return;
+      isSyncing = true;
+      if (deskSyncLabel) deskSyncLabel.textContent = 'Pulling...';
+      if (mSyncLabel) mSyncLabel.textContent = 'Pulling Updates...';
+
+      const r = await apiFetch('/api/system/git-pull', { method: 'POST' });
+      isSyncing = false;
+
+      if (r && r.updated) {
+        if (deskSyncLabel) deskSyncLabel.textContent = `Updated (${r.newCommit})`;
+        if (mSyncLabel) mSyncLabel.textContent = `Updated (${r.newCommit})`;
+        alert(`System successfully updated to commit ${r.newCommit}!\nStreaming Service is restarting now. The page will reload in 3 seconds.`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      } else if (r && r.error) {
+        alert(`Git pull check error:\n${r.error}`);
+        if (deskSyncLabel) deskSyncLabel.textContent = 'Sync Error';
+        if (mSyncLabel) mSyncLabel.textContent = 'Sync Error';
+      } else {
+        const commit = (r && (r.currentCommit || r.commit)) || 'synced';
+        if (deskSyncLabel) deskSyncLabel.textContent = `Sync (${commit})`;
+        if (mSyncLabel) mSyncLabel.textContent = `Synced (${commit})`;
+        alert(`Your system is already up-to-date at commit [${commit}].`);
+      }
+    } else {
+      const r = await apiFetch('/api/system/git-status');
+      if (r && r.currentCommit && r.currentCommit !== 'unknown') {
+        if (deskSyncLabel) deskSyncLabel.textContent = `Sync (${r.currentCommit})`;
+        if (mSyncLabel) mSyncLabel.textContent = `Git Sync (${r.currentCommit})`;
+      }
+    }
+  } catch (err) {
+    isSyncing = false;
+    console.warn('[Git-Sync] Status check failed:', err);
+  }
+}
+
+if (btnSyncDesk) {
+  btnSyncDesk.addEventListener('click', () => checkGitSyncStatus(true));
+}
+if (btnMSync) {
+  btnMSync.addEventListener('click', () => {
+    toggleMobileMenu(false);
+    checkGitSyncStatus(true);
+  });
+}
+
+// Check git status periodically every 60s
+setInterval(() => {
+  if (authToken) checkGitSyncStatus(false);
+}, 60000);
+
 // ── Init ──────────────────────────────────────────
 checkAuth();
+

@@ -334,6 +334,104 @@ html, body {
   letter-spacing: 0.3px;
 }
 
+/* ── Diagnostic Error Overlay ─────────────────────── */
+.cam-error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10px;
+  gap: 6px;
+  max-width: 95%;
+  animation: fadeIn .2s ease-in-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.status-badge.offline {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+}
+.status-badge.auth_error {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  color: #fde68a;
+}
+.status-badge.not_found {
+  background: rgba(249, 115, 22, 0.2);
+  border: 1px solid rgba(249, 115, 22, 0.6);
+  color: #fed7aa;
+}
+.status-badge.error, .status-badge.invalid_data {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+}
+
+.status-msg {
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.35;
+  word-break: break-word;
+  max-width: 240px;
+}
+
+.status-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #f1f5f9;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.status-btn:hover {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+.status-btn.edit:hover {
+  background: #d97706;
+  border-color: #f59e0b;
+}
+
+.git-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 /* canvas fills the card; aspect-ratio ensures correct sizing */
 .cam-card canvas {
   width: 100% !important; height: 100% !important;

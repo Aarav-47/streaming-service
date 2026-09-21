@@ -8,12 +8,18 @@
 const fs          = require('fs');
 const path        = require('path');
 const http        = require('http');
-const { spawn }   = require('child_process');
+const net         = require('net');
+const { spawn, exec, execSync } = require('child_process');
+const util        = require('util');
+const execPromise = util.promisify(exec);
 const express     = require('express');
 const WebSocket   = require('ws');
 const jwt         = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const cors        = require('cors');
+
+// ── Diagnostics & Status Tracking ────────────────────────────
+const feedStatusCache = new Map(); // id -> { status, code, short, message, timestamp }
 
 // ── Configuration ────────────────────────────────────────────
 const PORT          = parseInt(process.env.PORT  || '3000', 10);
@@ -55,6 +61,53 @@ function saveFeeds(feeds) {
 const streamSessions = new Map();
 // { sessionKey -> { ffmpegProc, clients: Set<WebSocket>, header: Buffer|null } }
 
+function classifyFFmpegError(code, stderrLogs, cam) {
+  const combined = stderrLogs.join('\n');
+
+  if (/401\s*Unauthorized|Unauthorized|Authentication\s*failed|DESCRIBE\s*failed:\s*401/i.test(combined)) {
+    return {
+      status: 'auth_error',
+      code: 4401,
+      short: 'Auth Error',
+      message: `Invalid username or password for feed (${cam.username || 'admin'})`
+    };
+  }
+
+  if (/Connection\s*timed\s*out|No\s*route\s*to\s*host|Connection\s*refused|Network\s*is\s*unreachable|Host\s*is\s*down|Immediate\s*exit\s*requested/i.test(combined)) {
+    return {
+      status: 'offline',
+      code: 4408,
+      short: 'Feed Offline',
+      message: `Feed is offline or unreachable at ${cam.ip}:${cam.port || 554}`
+    };
+  }
+
+  if (/404\s*Not\s*Found|Stream\s*not\s*found|DESCRIBE\s*failed:\s*404/i.test(combined)) {
+    return {
+      status: 'not_found',
+      code: 4404,
+      short: 'Stream Not Found',
+      message: `RTSP stream or channel not found at ${cam.ip}`
+    };
+  }
+
+  if (code === 3199971767 || /Invalid\s*data\s*found/i.test(combined)) {
+    return {
+      status: 'invalid_data',
+      code: 4501,
+      short: 'Stream Error',
+      message: `Feed returned invalid or unsupported video data`
+    };
+  }
+
+  return {
+    status: 'error',
+    code: 4500,
+    short: 'Feed Error',
+    message: combined.trim().split('\n').filter(Boolean).pop() || `Stream disconnected (code ${code})`
+  };
+}
+
 function getOrCreateStream(cam, quality = 'sd') {
   const isHD = (quality.toLowerCase() === 'hd');
   const qKey = isHD ? 'hd' : 'sd';
@@ -68,7 +121,14 @@ function getOrCreateStream(cam, quality = 'sd') {
   const targetUrl = cam.url;
   console.log(`[Stream] Starting FFmpeg [${qKey.toUpperCase()}] for [${cam.id}] -> ${cam.ip}`);
 
-  const session = { ffmpegProc: null, clients: new Set(), header: null };
+  const session = {
+    ffmpegProc: null,
+    clients: new Set(),
+    header: null,
+    startedAt: Date.now(),
+    framesReceived: 0,
+    stderrLogs: []
+  };
   streamSessions.set(sessionKey, session);
 
   // FFmpeg parameters (pure CPU software decoding - rock solid in Windows Service):
@@ -98,11 +158,22 @@ function getOrCreateStream(cam, quality = 'sd') {
   session.ffmpegProc = ffmpeg;
 
   ffmpeg.stderr.on('data', (d) => {
-    const msg = d.toString().trim();
-    if (msg) console.error(`[FFmpeg ${sessionKey}]`, msg);
+    const msg = d.toString();
+    session.stderrLogs.push(msg);
+    if (session.stderrLogs.length > 30) session.stderrLogs.shift();
+    const trimmed = msg.trim();
+    if (trimmed) console.error(`[FFmpeg ${sessionKey}]`, trimmed);
   });
 
   ffmpeg.stdout.on('data', (chunk) => {
+    session.framesReceived++;
+    feedStatusCache.set(cam.id, {
+      status: 'online',
+      code: 200,
+      short: 'Online',
+      message: 'Streaming Live',
+      timestamp: Date.now()
+    });
     if (!session.header) session.header = chunk;
     session.clients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -115,15 +186,47 @@ function getOrCreateStream(cam, quality = 'sd') {
 
   ffmpeg.on('exit', (code) => {
     console.log(`[Stream] FFmpeg exited for [${sessionKey}] (code ${code})`);
+    
+    let errorDetail = null;
+    if (code !== 0 && code !== null) {
+      errorDetail = classifyFFmpegError(code, session.stderrLogs, cam);
+      feedStatusCache.set(cam.id, {
+        status: errorDetail.status,
+        code: errorDetail.code,
+        short: errorDetail.short,
+        message: errorDetail.message,
+        timestamp: Date.now()
+      });
+      console.warn(`[Stream Error] Classified error for [${cam.id}]: ${errorDetail.short} (${errorDetail.message})`);
+    }
+
     streamSessions.delete(sessionKey);
     session.clients.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN) ws.close();
+      if (ws.readyState === WebSocket.OPEN) {
+        if (errorDetail) {
+          ws.close(errorDetail.code, errorDetail.message.slice(0, 120));
+        } else {
+          ws.close(1000, 'Stream finished');
+        }
+      }
     });
   });
 
   ffmpeg.on('error', (err) => {
     console.error(`[Stream] FFmpeg error for [${sessionKey}]:`, err.message);
+    const errorDetail = {
+      status: 'offline',
+      code: 4408,
+      short: 'Offline',
+      message: `Failed to launch stream: ${err.message}`
+    };
+    feedStatusCache.set(cam.id, { ...errorDetail, timestamp: Date.now() });
     streamSessions.delete(sessionKey);
+    session.clients.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(4408, errorDetail.message.slice(0, 120));
+      }
+    });
   });
 
   return session;
@@ -293,12 +396,165 @@ app.delete('/api/feeds/:id', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
+// ── TCP Reachability Probe ────────────────────────────────────
+function checkFeedReachability(ip, port = 554, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let isResolved = false;
+
+    socket.setTimeout(timeoutMs);
+
+    socket.on('connect', () => {
+      if (!isResolved) {
+        isResolved = true;
+        socket.destroy();
+        resolve({ reachable: true, reason: 'Connected' });
+      }
+    });
+
+    socket.on('timeout', () => {
+      if (!isResolved) {
+        isResolved = true;
+        socket.destroy();
+        resolve({ reachable: false, reason: 'Connection timed out' });
+      }
+    });
+
+    socket.on('error', (err) => {
+      if (!isResolved) {
+        isResolved = true;
+        socket.destroy();
+        resolve({ reachable: false, reason: err.message || 'Connection refused' });
+      }
+    });
+
+    socket.connect(port, ip);
+  });
+}
+
+// ── Feed Status & Diagnostics Routes ──────────────────────────
+app.get('/api/feeds/:id/check', authMiddleware, async (req, res) => {
+  const feeds = getFeeds();
+  const cam = feeds.find(c => c.id === req.params.id);
+  if (!cam) return res.status(404).json({ success: false, message: 'Feed not found' });
+
+  const cached = feedStatusCache.get(cam.id);
+  const probe = await checkFeedReachability(cam.ip, cam.port || 554, 2500);
+
+  if (!probe.reachable) {
+    const result = {
+      status: 'offline',
+      code: 4408,
+      short: 'Feed Offline',
+      message: `Feed is offline or unreachable at ${cam.ip}:${cam.port || 554} (${probe.reason})`,
+      reachable: false
+    };
+    feedStatusCache.set(cam.id, { ...result, timestamp: Date.now() });
+    return res.json({ success: true, ...result });
+  }
+
+  // If host is reachable on port 554, check if there is a recent auth error cached
+  if (cached && cached.status === 'auth_error' && (Date.now() - cached.timestamp < 120000)) {
+    return res.json({ success: true, ...cached, reachable: true });
+  }
+
+  res.json({
+    success: true,
+    status: 'online',
+    code: 200,
+    short: 'Online',
+    message: `Host reachable at ${cam.ip}:${cam.port || 554}`,
+    reachable: true
+  });
+});
+
+app.get('/api/feeds/status', authMiddleware, (req, res) => {
+  const result = {};
+  feedStatusCache.forEach((val, key) => {
+    result[key] = val;
+  });
+  res.json({ success: true, statuses: result });
+});
+
+// ── Git Auto-Pull / Sync Worker ───────────────────────────────
+let lastGitSync = {
+  currentCommit: 'unknown',
+  lastChecked: Date.now(),
+  lastStatus: 'idle',
+  lastError: null
+};
+
+try {
+  lastGitSync.currentCommit = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+} catch (_) {}
+
+async function checkAndApplyGitUpdates() {
+  try {
+    // 1. Fetch latest changes from GitHub
+    await execPromise('git fetch origin main', { cwd: __dirname, timeout: 25000 });
+
+    // 2. Compare local HEAD against origin/main
+    const localHash = (await execPromise('git rev-parse HEAD', { cwd: __dirname })).stdout.trim();
+    const remoteHash = (await execPromise('git rev-parse origin/main', { cwd: __dirname })).stdout.trim();
+
+    lastGitSync.lastChecked = Date.now();
+    lastGitSync.currentCommit = localHash.slice(0, 7);
+
+    if (localHash !== remoteHash) {
+      console.log(`[Auto-Sync] 🚀 New commit on origin/main (${localHash.slice(0, 7)} -> ${remoteHash.slice(0, 7)})! Pulling updates...`);
+      lastGitSync.lastStatus = 'updating';
+
+      await execPromise('git pull origin main', { cwd: __dirname, timeout: 35000 });
+
+      console.log('[Auto-Sync] ✅ Successfully pulled updates! Restarting service to apply changes...');
+      lastGitSync.currentCommit = remoteHash.slice(0, 7);
+      lastGitSync.lastStatus = 'restarting';
+
+      setTimeout(() => {
+        cleanupAll();
+        process.exit(0);
+      }, 1000);
+
+      return { updated: true, newCommit: remoteHash.slice(0, 7) };
+    } else {
+      lastGitSync.lastStatus = 'synced';
+      return { updated: false, commit: localHash.slice(0, 7) };
+    }
+  } catch (err) {
+    console.error('[Auto-Sync] Git check failed:', err.message);
+    lastGitSync.lastError = err.message;
+    lastGitSync.lastStatus = 'error';
+    return { updated: false, error: err.message };
+  }
+}
+
+// Check every 60 seconds automatically
+setInterval(checkAndApplyGitUpdates, 60000);
+// Check 10 seconds after server boot
+setTimeout(checkAndApplyGitUpdates, 10000);
+
+app.get('/api/system/git-status', authMiddleware, (req, res) => {
+  res.json({ success: true, ...lastGitSync });
+});
+
+app.post('/api/system/git-pull', authMiddleware, async (req, res) => {
+  const result = await checkAndApplyGitUpdates();
+  res.json({ success: true, ...result, currentCommit: lastGitSync.currentCommit });
+});
+
+app.post('/api/webhook/git-sync', (req, res) => {
+  console.log('[Auto-Sync] GitHub webhook received. Triggering immediate pull...');
+  checkAndApplyGitUpdates();
+  res.json({ success: true, message: 'Auto-sync initiated' });
+});
+
 // ── Health Check ──────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     activeStreams: streamSessions.size,
     totalFeeds: getFeeds().length,
+    gitCommit: lastGitSync.currentCommit,
     uptime: Math.round(process.uptime())
   });
 });
