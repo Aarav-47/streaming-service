@@ -178,6 +178,8 @@ function getOrCreateStream(cam, quality = 'sd') {
     '-threads', isHD ? '2' : '1',
     '-reorder_queue_size', '4000',
     '-rtsp_transport', 'tcp',
+    '-probesize', '1000000',
+    '-analyzeduration', '1000000',
     '-fflags', '+nobuffer+genpts',
     '-flags', 'low_delay',
     '-i', targetUrl,
