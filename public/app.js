@@ -261,6 +261,9 @@ function renderGrid() {
           <button class="cam-btn ctrl-btn rec-btn ${isRec ? 'recording' : ''}" id="recbtn-${cam.id}" title="${isRec ? 'Stop Recording' : 'Start Secret Recording'}" onclick="event.stopPropagation(); toggleRecord('${cam.id}')">
             <i class="fa-solid fa-circle-dot"></i>
           </button>
+          <button class="cam-btn zoom-btn" id="zoombtn-${cam.id}" onclick="event.stopPropagation(); cycleZoom('${cam.id}')" title="Zoom: 1x / 2x / 3.5x">
+            <i class="fa-solid fa-magnifying-glass-plus"></i>
+          </button>
           <button class="cam-btn move-btn" title="Move Left" onclick="event.stopPropagation(); moveFeed('${cam.id}', -1)">
             <i class="fa-solid fa-arrow-left"></i>
           </button>
@@ -285,6 +288,9 @@ function renderGrid() {
         <span class="rec-dot"></span>
         <span id="rec-timer-${cam.id}">REC 00:00</span>
       </div>
+      <div id="zoom-badge-${cam.id}" class="zoom-badge hidden" onclick="event.stopPropagation(); resetZoom('${cam.id}')" title="Click to reset zoom">
+        <i class="fa-solid fa-magnifying-glass"></i> <span id="zoom-val-${cam.id}">1.0x</span> <i class="fa-solid fa-xmark" style="font-size:9px;margin-left:2px;opacity:.7"></i>
+      </div>
       <div class="cam-overlay ${isPlaying ? 'hidden' : ''}" id="overlay-${cam.id}" onclick="startFeed('${cam.id}')">
         <div class="play-circle"><i class="fa-solid fa-play"></i></div>
         <span class="overlay-label">Click to Open Feed</span>
@@ -294,6 +300,7 @@ function renderGrid() {
     grid.appendChild(card);
 
     setupDragAndDrop(card);
+    setupZoomAndPan(card, cam.id);
 
     if (isPlaying) {
       startFeed(cam.id);
@@ -309,6 +316,7 @@ function resetCanvas(card, id) {
   const newCanvas = document.createElement('canvas');
   newCanvas.id = `canvas-${id}`;
   card.appendChild(newCanvas);
+  if (typeof resetZoom === 'function') resetZoom(id);
   return newCanvas;
 }
 
@@ -983,6 +991,209 @@ camForm.addEventListener('submit', async (e) => {
     camErr.textContent = 'Network error';
   }
 });
+
+// ── Digital Zoom & Pan Engine ─────────────────────
+const zoomState = {}; // camId -> { scale, x, y, isPanning, startX, startY, initialDistance, initialScale, lastTap }
+
+function getZoomState(id) {
+  if (!zoomState[id]) {
+    zoomState[id] = {
+      scale: 1,
+      x: 0,
+      y: 0,
+      isPanning: false,
+      startX: 0,
+      startY: 0,
+      initialDistance: 0,
+      initialScale: 1,
+      lastTap: 0
+    };
+  }
+  return zoomState[id];
+}
+
+function applyZoomTransform(id, animate = false) {
+  const state = getZoomState(id);
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  const canvas = card.querySelector('canvas');
+  const badge = document.getElementById(`zoom-badge-${id}`);
+  const valEl = document.getElementById(`zoom-val-${id}`);
+
+  // Clamp pan boundaries to keep video within card viewport
+  const maxX = Math.max(0, ((state.scale - 1) * card.clientWidth) / 2);
+  const maxY = Math.max(0, ((state.scale - 1) * card.clientHeight) / 2);
+  state.x = Math.max(-maxX, Math.min(maxX, state.x));
+  state.y = Math.max(-maxY, Math.min(maxY, state.y));
+
+  if (canvas) {
+    canvas.style.transition = animate ? 'transform 0.2s ease-out' : 'none';
+    canvas.style.transformOrigin = 'center center';
+    canvas.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+  }
+
+  const isZoomed = state.scale > 1.05;
+  card.classList.toggle('is-zoomed', isZoomed);
+
+  if (badge) {
+    badge.classList.toggle('hidden', !isZoomed);
+  }
+  if (valEl) {
+    valEl.textContent = `${state.scale.toFixed(1)}x`;
+  }
+}
+
+window.resetZoom = function(id) {
+  const state = getZoomState(id);
+  state.scale = 1;
+  state.x = 0;
+  state.y = 0;
+  applyZoomTransform(id, true);
+};
+
+window.cycleZoom = function(id) {
+  const state = getZoomState(id);
+  if (state.scale < 1.8) {
+    state.scale = 2.0;
+  } else if (state.scale < 3.2) {
+    state.scale = 3.5;
+  } else {
+    state.scale = 1.0;
+    state.x = 0;
+    state.y = 0;
+  }
+  applyZoomTransform(id, true);
+};
+
+function setupZoomAndPan(card, id) {
+  const state = getZoomState(id);
+
+  // Desktop Mouse Wheel Zoom (centered on cursor)
+  card.addEventListener('wheel', (e) => {
+    if (!feedPlaying[id]) return;
+    e.preventDefault();
+
+    const rect = card.getBoundingClientRect();
+    const cursorX = e.clientX - (rect.left + rect.width / 2);
+    const cursorY = e.clientY - (rect.top + rect.height / 2);
+
+    const prevScale = state.scale;
+    const factor = e.deltaY < 0 ? 1.25 : 0.8;
+    const newScale = Math.min(5.0, Math.max(1.0, prevScale * factor));
+
+    if (newScale === 1.0) {
+      state.scale = 1.0;
+      state.x = 0;
+      state.y = 0;
+    } else {
+      const scaleChange = newScale / prevScale;
+      state.x = cursorX - scaleChange * (cursorX - state.x);
+      state.y = cursorY - scaleChange * (cursorY - state.y);
+      state.scale = newScale;
+    }
+
+    applyZoomTransform(id, false);
+  }, { passive: false });
+
+  // Desktop Mouse Drag to Pan
+  card.addEventListener('mousedown', (e) => {
+    if (state.scale <= 1 || e.button !== 0) return;
+    if (e.target.closest('.cam-bar') || e.target.closest('.zoom-badge')) return;
+
+    state.isPanning = true;
+    state.startX = e.clientX - state.x;
+    state.startY = e.clientY - state.y;
+    card.classList.add('is-panning');
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!state.isPanning) return;
+    state.x = e.clientX - state.startX;
+    state.y = e.clientY - state.startY;
+    applyZoomTransform(id, false);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (state.isPanning) {
+      state.isPanning = false;
+      card.classList.remove('is-panning');
+    }
+  });
+
+  // Mobile Touch Gestures (Pinch to Zoom, Drag to Pan, Double-tap)
+  card.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.cam-bar') || e.target.closest('.zoom-badge')) return;
+
+    if (e.touches.length === 2) {
+      state.initialDistance = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      state.initialScale = state.scale;
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      // Double tap detector
+      if (now - state.lastTap < 320) {
+        e.preventDefault();
+        if (state.scale > 1.2) {
+          resetZoom(id);
+        } else {
+          state.scale = 2.5;
+          const rect = card.getBoundingClientRect();
+          const tapX = e.touches[0].clientX - (rect.left + rect.width / 2);
+          const tapY = e.touches[0].clientY - (rect.top + rect.height / 2);
+          state.x = -tapX * 1.5;
+          state.y = -tapY * 1.5;
+          applyZoomTransform(id, true);
+        }
+        state.lastTap = 0;
+        return;
+      }
+      state.lastTap = now;
+
+      if (state.scale > 1) {
+        state.isPanning = true;
+        state.startX = e.touches[0].clientX - state.x;
+        state.startY = e.touches[0].clientY - state.y;
+      }
+    }
+  }, { passive: false });
+
+  card.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && state.initialDistance > 0) {
+      e.preventDefault();
+      const currentDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const ratio = currentDist / state.initialDistance;
+      state.scale = Math.min(5.0, Math.max(1.0, state.initialScale * ratio));
+      if (state.scale === 1.0) {
+        state.x = 0;
+        state.y = 0;
+      }
+      applyZoomTransform(id, false);
+    } else if (e.touches.length === 1 && state.isPanning && state.scale > 1) {
+      e.preventDefault();
+      state.x = e.touches[0].clientX - state.startX;
+      state.y = e.touches[0].clientY - state.startY;
+      applyZoomTransform(id, false);
+    }
+  }, { passive: false });
+
+  card.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2) {
+      state.initialDistance = 0;
+    }
+    if (e.touches.length === 0) {
+      state.isPanning = false;
+      if (state.scale < 1.05) {
+        resetZoom(id);
+      }
+    }
+  });
+}
 
 // ── Automatic & Manual Screen Wake Lock ───────────
 async function updateAutoWakeLock() {

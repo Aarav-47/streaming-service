@@ -691,6 +691,41 @@ html, body {
   }
 }
 
+/* ── Digital Zoom Badge & Controls ────────────────── */
+.zoom-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 99px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  transition: all .15s;
+  user-select: none;
+}
+.zoom-badge:hover {
+  background: #2563eb;
+  color: #fff;
+  border-color: #60a5fa;
+}
+
+.cam-card.is-zoomed canvas {
+  cursor: grab !important;
+}
+.cam-card.is-zoomed.is-panning canvas {
+  cursor: grabbing !important;
+}
+
 /* ── Secret Recording Controls & Indicators ──────────── */
 .ctrl-btn.rec-btn {
   color: #ef4444 !important;
