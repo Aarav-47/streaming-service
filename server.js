@@ -35,6 +35,8 @@ const FFMPEG_BIN = (() => {
   if (fs.existsSync(local)) return local;
   const localMac = path.join(__dirname, 'ffmpeg', 'ffmpeg');
   if (fs.existsSync(localMac)) return localMac;
+  if (fs.existsSync('/opt/homebrew/bin/ffmpeg')) return '/opt/homebrew/bin/ffmpeg';
+  if (fs.existsSync('/usr/local/bin/ffmpeg')) return '/usr/local/bin/ffmpeg';
   return 'ffmpeg'; // fall back to system PATH
 })();
 
