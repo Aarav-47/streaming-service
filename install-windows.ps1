@@ -1,5 +1,5 @@
 # ============================================================
-#  Streaming Service — Windows Automated Backup Server Setup
+#  Streaming Service -- Windows Automated Backup Server Setup
 #  High-Availability (HA) Failover Node
 #  Run this ONCE in PowerShell as Administrator.
 # ============================================================
@@ -16,39 +16,42 @@ $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
 Write-Host ""
-Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "   Streaming Service — Windows Backup Server Installer         " -ForegroundColor Cyan
-Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "==============================================================" -ForegroundColor Cyan
+Write-Host "   Streaming Service -- Windows Backup Server Installer       " -ForegroundColor Cyan
+Write-Host "==============================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # -- 0. Verify Administrator Privileges
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
+$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+$adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
+if (-not $principal.IsInRole($adminRole)) {
   Write-Warning "Administrator privileges required. Requesting elevation..."
   Start-Process powershell -Verb runAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
   exit
 }
 
-# Configure TLS 1.2 for all downloads
+# Configure TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # -- 1. Check / Install Node.js
 Write-Host "[1/6] Checking Node.js runtime..." -ForegroundColor Yellow
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
-  Write-Host "  -> Node.js not found. Attempting automatic installation via winget..." -ForegroundColor Yellow
+  Write-Host "  -> Node.js not found. Installing via winget..." -ForegroundColor Yellow
   $winget = Get-Command winget -ErrorAction SilentlyContinue
   if ($winget) {
     & winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
   } else {
-    Write-Host "  -> Downloading Node.js LTS MSI package..." -ForegroundColor Yellow
+    Write-Host "  -> Downloading Node.js LTS installer..." -ForegroundColor Yellow
     $msiPath = "$env:TEMP\node-lts.msi"
     Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi" -OutFile $msiPath -UseBasicParsing
     Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait
     Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
   }
+  $machinePath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
+  $userPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+  $env:Path = "$machinePath;$userPath"
   $node = Get-Command node -ErrorAction SilentlyContinue
   if (-not $node) {
     Write-Error "Please install Node.js from https://nodejs.org and re-run this script."
@@ -104,7 +107,7 @@ if (-not (Test-Path "$InstallDir\feeds.json")) {
 }
 
 # -- 5. Register Streaming Service as 24/7 Windows Service
-Write-Host "[5/6] Setting up StreamingService Windows Service (24/7 background)..." -ForegroundColor Yellow
+Write-Host "[5/6] Setting up StreamingService Windows Service..." -ForegroundColor Yellow
 $nssmDir = "$InstallDir\nssm"
 $nssmExe = "$nssmDir\nssm.exe"
 
@@ -134,7 +137,7 @@ if (-not (Test-Path $nssmExe)) {
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing) {
   Write-Host "  -> Refreshing previous service instance..." -ForegroundColor Yellow
-  try { & $nssmExe stop   $ServiceName confirm 2>$null } catch {}
+  try { & $nssmExe stop $ServiceName confirm 2>$null } catch {}
   Start-Sleep -Seconds 1
   try { & $nssmExe remove $ServiceName confirm 2>$null } catch {}
   Start-Sleep -Seconds 1
@@ -154,7 +157,6 @@ New-Item -ItemType Directory -Force -Path "$InstallDir\logs" | Out-Null
 & $nssmExe set      $ServiceName AppStderr      "$InstallDir\logs\service-error.log"
 & $nssmExe set      $ServiceName AppRotateFiles  1
 & $nssmExe set      $ServiceName AppRotateBytes  5242880
-& $nssmExe set      $ServiceName AppEnvironmentExtra "PORT=3000`nADMIN_USER=admin`nADMIN_PASS=Aarav@2000"
 
 Write-Host "  -> Starting StreamingService..." -ForegroundColor Yellow
 & $nssmExe start $ServiceName
@@ -167,7 +169,7 @@ if ($svc -and $svc.Status -eq "Running") {
 }
 
 # -- 6. Cloudflare Tunnel Failover Setup
-Write-Host "[6/6] Configuring Cloudflare Tunnel Connector (High-Availability Failover)..." -ForegroundColor Yellow
+Write-Host "[6/6] Configuring Cloudflare Tunnel Connector..." -ForegroundColor Yellow
 
 $cfCmd = Get-Command cloudflared -ErrorAction SilentlyContinue
 $cfExePath = $null
@@ -214,20 +216,22 @@ try {
 
 # -- Final Summary
 Write-Host ""
-Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "   ✅ WINDOWS BACKUP SERVER SETUP COMPLETE!                  " -ForegroundColor Green
-Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host " • Service 1: StreamingService -> $( (Get-Service StreamingService -ErrorAction SilentlyContinue).Status )" -ForegroundColor White
-Write-Host " • Service 2: cloudflared      -> $( (Get-Service cloudflared -ErrorAction SilentlyContinue).Status )" -ForegroundColor White
+Write-Host "==============================================================" -ForegroundColor Cyan
+Write-Host "   [OK] WINDOWS BACKUP SERVER SETUP COMPLETE!                 " -ForegroundColor Green
+Write-Host "==============================================================" -ForegroundColor Cyan
+$svcStatus = (Get-Service StreamingService -ErrorAction SilentlyContinue).Status
+$cfStatus = (Get-Service cloudflared -ErrorAction SilentlyContinue).Status
+Write-Host " - Service 1: StreamingService -> $svcStatus" -ForegroundColor White
+Write-Host " - Service 2: cloudflared      -> $cfStatus" -ForegroundColor White
 Write-Host ""
-Write-Host " 🌐 High Availability (Active-Active Failover):" -ForegroundColor Cyan
+Write-Host " High Availability (Active-Active Failover):" -ForegroundColor Cyan
 Write-Host "   - Node 1: Mac Mini (Bhakts-Mac-mini-2.local)" -ForegroundColor White
 Write-Host "   - Node 2: Windows PC ($env:COMPUTERNAME)" -ForegroundColor White
-Write-Host "   - Live URL: https://aa.horizonhuedigital.in" -ForegroundColor Yellow
+Write-Host "   - Live URL:  https://aa.horizonhuedigital.in" -ForegroundColor Yellow
 Write-Host "   - Local URL: http://localhost:3000" -ForegroundColor White
 Write-Host ""
 Write-Host " Both servers run simultaneously. If one machine is shut down," -ForegroundColor Green
 Write-Host " sleeps, or loses power, the other handles 100% of the feeds" -ForegroundColor Green
 Write-Host " automatically with ZERO downtime!" -ForegroundColor Green
-Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "==============================================================" -ForegroundColor Cyan
 Write-Host ""

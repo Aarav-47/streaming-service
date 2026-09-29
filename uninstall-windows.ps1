@@ -1,5 +1,5 @@
 # ============================================================
-#  Streaming Service — Windows Service Uninstaller
+#  Streaming Service -- Windows Service Uninstaller
 #  Run in PowerShell as Administrator to stop and remove services.
 # ============================================================
 
@@ -7,9 +7,11 @@ param(
   [string]$ServiceName = "StreamingService"
 )
 
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-  Write-Warning "Administrator privileges required. Relaunching..."
+$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+$adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
+if (-not $principal.IsInRole($adminRole)) {
+  Write-Warning "Administrator privileges required. Requesting elevation..."
   Start-Process powershell -Verb runAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
   exit
 }
