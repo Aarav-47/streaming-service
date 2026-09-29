@@ -15,6 +15,7 @@ let macServerUrl       = localStorage.getItem('stream_mac_url') || 'http://Bhakt
 let winServerUrl       = localStorage.getItem('stream_win_url') || 'http://localhost:3000';
 let customServerUrl    = localStorage.getItem('stream_custom_url') || '';
 let currentNodeData    = null;
+const feedRetryCount   = {};
 
 // ── DOM ───────────────────────────────────────────
 const loginScreen = document.getElementById('login-screen');
@@ -359,9 +360,12 @@ function resetCanvas(card, id) {
 }
 
 // ── On-Demand Stream Management ───────────────────
-window.startFeed = function(id) {
+window.startFeed = function(id, isAutoRetry = false) {
   feedPlaying[id] = true;
   updateAutoWakeLock();
+  if (!isAutoRetry) {
+    feedRetryCount[id] = 0;
+  }
   const q = feedQuality[id] || 'sd';
 
   const card = document.getElementById(`card-${id}`);
@@ -376,9 +380,10 @@ window.startFeed = function(id) {
 
   const overlay = document.getElementById(`overlay-${id}`);
   if (overlay) {
+    const attemptText = (isAutoRetry && feedRetryCount[id] > 0) ? `Connecting (attempt ${feedRetryCount[id]}/3)...` : 'Connecting Stream...';
     overlay.innerHTML = `
       <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
-      <span class="overlay-label">Connecting Stream...</span>
+      <span class="overlay-label">${attemptText}</span>
     `;
     overlay.classList.remove('hidden');
   }
@@ -626,6 +631,29 @@ async function handleFeedCloseError(camId, code, reason) {
 
   updatePlayAllBtn();
 
+  // If feed is supposed to be playing and not an auth error, auto-retry up to 3 times for sluggish feeds
+  const attempts = (feedRetryCount[camId] || 0) + 1;
+  feedRetryCount[camId] = attempts;
+
+  if (attempts <= 3 && feedPlaying[camId] && code !== 4401) {
+    console.log(`[Stream] Sluggish feed [${camId}] auto-reconnecting (attempt ${attempts}/3)...`);
+    const overlay = document.getElementById(`overlay-${camId}`);
+    if (overlay) {
+      overlay.innerHTML = `
+        <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+        <span class="overlay-label">Connecting Stream (${attempts}/3)...</span>
+      `;
+      overlay.classList.remove('hidden');
+    }
+    const delay = attempts === 1 ? 600 : 1200;
+    setTimeout(() => {
+      if (feedPlaying[camId]) {
+        startFeed(camId, true);
+      }
+    }, delay);
+    return;
+  }
+
   // 1. Check if WebSocket gave us a specific diagnostic code
   if (code === 4401 || (reason && reason.toLowerCase().includes('auth'))) {
     showFeedError(camId, {
@@ -734,6 +762,7 @@ function initPlayer(camId, wsUrl, canvas) {
     audio:    true,
     loop:     false,
     onVideoDecode: () => {
+      feedRetryCount[camId] = 0;
       if (!firstFrame) {
         firstFrame = true;
         if (overlay) overlay.classList.add('hidden');
