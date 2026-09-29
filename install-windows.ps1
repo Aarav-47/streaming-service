@@ -34,6 +34,14 @@ if (-not $principal.IsInRole($adminRole)) {
 # Configure TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Configure Git Safe Directory across all Windows users & SYSTEM account
+if (Get-Command git -ErrorAction SilentlyContinue) {
+  try {
+    git config --system --add safe.directory "*"
+    git config --global --add safe.directory "*"
+  } catch {}
+}
+
 # -- 1. Check / Install Node.js
 Write-Host "[1/6] Checking Node.js runtime..." -ForegroundColor Yellow
 $node = Get-Command node -ErrorAction SilentlyContinue

@@ -744,18 +744,25 @@ let lastGitSync = {
   lastError: null
 };
 
+// Automatically register directory as safe across any user context (SYSTEM vs normal user)
 try {
-  lastGitSync.currentCommit = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+  const normPath = __dirname.replace(/\\/g, '/');
+  execSync(`git config --global --add safe.directory "${normPath}"`, { stdio: 'ignore' });
+  execSync('git config --global --add safe.directory "*"', { stdio: 'ignore' });
+} catch (_) {}
+
+try {
+  lastGitSync.currentCommit = execSync('git -c safe.directory=* rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
 } catch (_) {}
 
 async function checkAndApplyGitUpdates() {
   try {
-    // 1. Fetch latest changes from GitHub
-    await execPromise('git fetch origin main', { cwd: __dirname, timeout: 25000 });
+    // 1. Fetch latest changes from GitHub (with safe.directory bypass)
+    await execPromise('git -c safe.directory=* fetch origin main', { cwd: __dirname, timeout: 25000 });
 
     // 2. Compare local HEAD against origin/main
-    const localHash = (await execPromise('git rev-parse HEAD', { cwd: __dirname })).stdout.trim();
-    const remoteHash = (await execPromise('git rev-parse origin/main', { cwd: __dirname })).stdout.trim();
+    const localHash = (await execPromise('git -c safe.directory=* rev-parse HEAD', { cwd: __dirname })).stdout.trim();
+    const remoteHash = (await execPromise('git -c safe.directory=* rev-parse origin/main', { cwd: __dirname })).stdout.trim();
 
     lastGitSync.lastChecked = Date.now();
     lastGitSync.currentCommit = localHash.slice(0, 7);
@@ -764,7 +771,7 @@ async function checkAndApplyGitUpdates() {
       console.log(`[Auto-Sync] 🚀 New commit on origin/main (${localHash.slice(0, 7)} -> ${remoteHash.slice(0, 7)})! Pulling updates...`);
       lastGitSync.lastStatus = 'updating';
 
-      await execPromise('git pull origin main', { cwd: __dirname, timeout: 35000 });
+      await execPromise('git -c safe.directory=* pull origin main', { cwd: __dirname, timeout: 35000 });
 
       console.log('[Auto-Sync] ✅ Successfully pulled updates! Restarting service to apply changes...');
       lastGitSync.currentCommit = remoteHash.slice(0, 7);
