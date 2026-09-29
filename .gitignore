@@ -17,3 +17,8 @@ nssm/
 Thumbs.db
 *.log
 .env
+
+# ── Secret Recordings Vault ──────────────
+.vault/
+*.mp4
+

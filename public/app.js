@@ -135,6 +135,7 @@ function showApp() {
   app.classList.remove('hidden');
   loadFeeds();
   checkGitSyncStatus();
+  loadRecordingsList();
 }
 
 // ── API Helper ────────────────────────────────────
@@ -236,6 +237,7 @@ function renderGrid() {
     const sno = String(offset + idx + 1).padStart(2, '0');
     const q = feedQuality[cam.id] || 'sd';
     const isPlaying = !!feedPlaying[cam.id];
+    const isRec = Boolean(activeRecordings[cam.id]);
 
     const card = document.createElement('div');
     card.className = 'cam-card';
@@ -259,6 +261,9 @@ function renderGrid() {
           <button class="cam-btn play-btn ${isPlaying ? 'playing' : ''}" id="playbtn-${cam.id}" title="${isPlaying ? 'Stop Feed' : 'Start Feed'}" onclick="toggleFeedPlay('${cam.id}')">
             <i class="fa-solid ${isPlaying ? 'fa-stop' : 'fa-play'}"></i>
           </button>
+          <button class="cam-btn ctrl-btn rec-btn ${isRec ? 'recording' : ''}" id="recbtn-${cam.id}" title="${isRec ? 'Stop Recording' : 'Start Secret Recording'}" onclick="toggleRecord('${cam.id}')">
+            <i class="fa-solid fa-circle-dot"></i>
+          </button>
           <button class="cam-btn move-btn" title="Move Left" onclick="moveFeed('${cam.id}', -1)">
             <i class="fa-solid fa-arrow-left"></i>
           </button>
@@ -278,6 +283,10 @@ function renderGrid() {
             <i class="fa-solid fa-trash"></i>
           </button>
         </div>
+      </div>
+      <div id="rec-badge-${cam.id}" class="rec-overlay-badge ${isRec ? '' : 'hidden'}">
+        <span class="rec-dot"></span>
+        <span id="rec-timer-${cam.id}">REC 00:00</span>
       </div>
       <div class="cam-overlay ${isPlaying ? 'hidden' : ''}" id="overlay-${cam.id}" onclick="startFeed('${cam.id}')">
         <div class="play-circle"><i class="fa-solid fa-play"></i></div>
@@ -309,6 +318,7 @@ function resetCanvas(card, id) {
 // ── On-Demand Stream Management ───────────────────
 window.startFeed = function(id) {
   feedPlaying[id] = true;
+  updateAutoWakeLock();
   const q = feedQuality[id] || 'sd';
 
   const card = document.getElementById(`card-${id}`);
@@ -346,6 +356,7 @@ window.startFeed = function(id) {
 
 window.stopFeed = function(id) {
   feedPlaying[id] = false;
+  updateAutoWakeLock();
 
   if (players[id]) {
     try { players[id].destroy(); } catch (_) {}
@@ -547,6 +558,7 @@ function showFeedError(camId, err) {
 
 async function handleFeedCloseError(camId, code, reason) {
   feedPlaying[camId] = false;
+  updateAutoWakeLock();
   if (players[camId]) {
     try { players[camId].destroy(); } catch (_) {}
     delete players[camId];
@@ -724,6 +736,7 @@ function destroyAllPlayers() {
   Object.values(players).forEach((p) => { try { p.destroy(); } catch (_) {} });
   players = {};
   audioActiveId = null;
+  updateAutoWakeLock();
 }
 
 // ── Audio Mute / Unmute ───────────────────────────
@@ -962,7 +975,39 @@ camForm.addEventListener('submit', async (e) => {
   }
 });
 
-// ── Wake Lock (Keep Android Screen On) ────────────
+// ── Automatic & Manual Screen Wake Lock ───────────
+async function updateAutoWakeLock() {
+  const isAnyPlaying = Object.values(feedPlaying).some(Boolean);
+  try {
+    if (isAnyPlaying && !wakeLock && 'wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      const btn = document.getElementById('btn-wake');
+      if (btn) {
+        btn.classList.add('active');
+        btn.title = 'Screen awake (Auto)';
+      }
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+        const b = document.getElementById('btn-wake');
+        if (b && !Object.values(feedPlaying).some(Boolean)) b.classList.remove('active');
+      });
+    } else if (!isAnyPlaying && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+      const btn = document.getElementById('btn-wake');
+      if (btn) btn.classList.remove('active');
+    }
+  } catch (err) {
+    console.warn('Wake Lock error:', err.message);
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    updateAutoWakeLock();
+  }
+});
+
 document.getElementById('btn-wake').addEventListener('click', async () => {
   const btn = document.getElementById('btn-wake');
   try {
@@ -976,11 +1021,222 @@ document.getElementById('btn-wake').addEventListener('click', async () => {
       });
     } else {
       await wakeLock.release();
+      wakeLock = null;
+      btn.classList.remove('active');
     }
   } catch (err) {
     console.warn('Wake Lock not supported:', err.message);
   }
 });
+
+// ── Secret Recordings Vault ───────────────────────
+let activeRecordings = {}; // feedId -> { fileId, startTime, timer }
+let vaultRecordings = [];
+
+window.toggleRecord = async function(id) {
+  if (activeRecordings[id]) {
+    await stopRecord(id);
+  } else {
+    await startRecord(id);
+  }
+};
+
+window.startRecord = async function(id) {
+  try {
+    const r = await apiFetch(`/api/recordings/${id}/start`, { method: 'POST' });
+    if (r && r.success) {
+      const startTime = r.recording.startTime || Date.now();
+      activeRecordings[id] = {
+        fileId: r.recording.fileId,
+        startTime,
+        timer: null
+      };
+
+      const btn = document.getElementById(`recbtn-${id}`);
+      if (btn) {
+        btn.classList.add('recording');
+        btn.title = 'Stop Recording';
+      }
+
+      const badge = document.getElementById(`rec-badge-${id}`);
+      if (badge) badge.classList.remove('hidden');
+
+      activeRecordings[id].timer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const secs = String(elapsed % 60).padStart(2, '0');
+        const timerEl = document.getElementById(`rec-timer-${id}`);
+        if (timerEl) timerEl.textContent = `REC ${mins}:${secs}`;
+      }, 1000);
+
+      updateVaultBadges();
+    } else {
+      alert((r && r.message) || 'Failed to start recording');
+    }
+  } catch (err) {
+    alert('Network error starting recording');
+  }
+};
+
+window.stopRecord = async function(id) {
+  const rec = activeRecordings[id];
+  if (!rec) return;
+
+  clearInterval(rec.timer);
+  delete activeRecordings[id];
+
+  const btn = document.getElementById(`recbtn-${id}`);
+  if (btn) {
+    btn.classList.remove('recording');
+    btn.title = 'Start Secret Recording';
+  }
+
+  const badge = document.getElementById(`rec-badge-${id}`);
+  if (badge) badge.classList.add('hidden');
+
+  try {
+    const r = await apiFetch(`/api/recordings/${id}/stop`, { method: 'POST' });
+    if (r && r.success) {
+      alert(`Recording saved to secret vault!\nDuration: ${r.file.duration}s\nSize: ${(r.file.size / (1024*1024)).toFixed(2)} MB`);
+      await loadRecordingsList();
+    } else {
+      alert((r && r.message) || 'Error stopping recording');
+    }
+  } catch {
+    alert('Error finalizing recording');
+  }
+  updateVaultBadges();
+};
+
+async function loadRecordingsList() {
+  try {
+    const r = await apiFetch('/api/recordings');
+    if (r && r.success) {
+      vaultRecordings = r.recordings || [];
+      renderVaultList();
+      updateVaultBadges();
+    }
+  } catch (_) {}
+}
+
+function updateVaultBadges() {
+  const total = vaultRecordings.length + Object.keys(activeRecordings).length;
+  const desk = document.getElementById('vault-badge-desk');
+  const m = document.getElementById('vault-badge-m');
+  if (desk) {
+    desk.textContent = total;
+    desk.classList.toggle('hidden', total === 0);
+  }
+  if (m) {
+    m.textContent = total;
+    m.classList.toggle('hidden', total === 0);
+  }
+}
+
+function renderVaultList() {
+  const listEl = document.getElementById('vault-list');
+  const statusEl = document.getElementById('vault-status-text');
+  if (!listEl) return;
+
+  if (statusEl) {
+    statusEl.textContent = `${vaultRecordings.length} clip(s) in vault`;
+  }
+
+  if (vaultRecordings.length === 0) {
+    listEl.innerHTML = `
+      <div class="vault-empty">
+        <i class="fa-solid fa-shield-halved" style="font-size:32px;margin-bottom:8px;opacity:.4"></i>
+        <p>No recordings stored in vault.</p>
+        <p style="font-size:11px;margin-top:4px;opacity:.7">Click the red record button on any feed to capture footage.</p>
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = vaultRecordings.map(rec => {
+    const dateStr = new Date(rec.createdAt).toLocaleString();
+    const sizeMB = (rec.size / (1024 * 1024)).toFixed(2);
+    return `
+      <div class="vault-item" id="vault-item-${rec.fileId}">
+        <div class="vault-item-info">
+          <span class="vault-item-name"><i class="fa-solid fa-file-video" style="margin-right:6px;color:#ef4444"></i>${escapeHtml(rec.feedName)}</span>
+          <div class="vault-item-meta">
+            <span><i class="fa-solid fa-calendar-day"></i> ${dateStr}</span>
+            <span><i class="fa-solid fa-hard-drive"></i> ${sizeMB} MB</span>
+          </div>
+        </div>
+        <div class="vault-item-actions">
+          <button class="vault-btn-dl" onclick="downloadAndPurge('${rec.fileId}')" title="Download to device & auto-purge from PC">
+            <i class="fa-solid fa-download"></i> Save & Purge
+          </button>
+          <button class="vault-btn-del" onclick="deleteVaultFile('${rec.fileId}')" title="Delete without downloading">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.downloadAndPurge = function(fileId) {
+  const token = authToken ? `?token=${encodeURIComponent(authToken)}` : '';
+  const downloadUrl = `/api/recordings/${encodeURIComponent(fileId)}/download${token}`;
+
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = `${fileId}.mp4`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  alert(`Downloading recording to your device...\n\nNotice: This footage will be automatically purged from the computer to keep your vault private.`);
+
+  setTimeout(async () => {
+    await loadRecordingsList();
+  }, 2500);
+};
+
+window.deleteVaultFile = async function(fileId) {
+  if (!confirm('Permanently delete this recording from the computer?')) return;
+  try {
+    const r = await apiFetch(`/api/recordings/${fileId}`, { method: 'DELETE' });
+    if (r && r.success) {
+      vaultRecordings = vaultRecordings.filter(f => f.fileId !== fileId);
+      renderVaultList();
+      updateVaultBadges();
+    }
+  } catch {
+    alert('Failed to delete file');
+  }
+};
+
+// Vault Modal Open / Close
+const vaultModal = document.getElementById('vault-modal');
+const btnVaultDesk = document.getElementById('btn-vault-desk');
+const btnMVault = document.getElementById('btn-m-vault');
+const btnVaultClose = document.getElementById('vault-close');
+const btnVaultRefresh = document.getElementById('btn-vault-refresh');
+
+function openVaultModal() {
+  if (vaultModal) {
+    vaultModal.classList.remove('hidden');
+    loadRecordingsList();
+  }
+}
+function closeVaultModal() {
+  if (vaultModal) vaultModal.classList.add('hidden');
+}
+
+if (btnVaultDesk) btnVaultDesk.addEventListener('click', openVaultModal);
+if (btnMVault) btnMVault.addEventListener('click', () => {
+  toggleMobileMenu(false);
+  openVaultModal();
+});
+if (btnVaultClose) btnVaultClose.addEventListener('click', closeVaultModal);
+if (vaultModal) vaultModal.addEventListener('click', (e) => {
+  if (e.target === vaultModal) closeVaultModal();
+});
+if (btnVaultRefresh) btnVaultRefresh.addEventListener('click', loadRecordingsList);
 
 // ── Git Auto-Sync Status & Pull Controls ──────────
 const deskSyncLabel = document.getElementById('desk-sync-label');

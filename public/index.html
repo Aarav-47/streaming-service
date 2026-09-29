@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-title" content="Streaming" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
-  <link rel="stylesheet" href="/style.css?v=2.7" />
+  <link rel="stylesheet" href="/style.css?v=2.8" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />
 </head>
 <body>
@@ -68,6 +68,7 @@
         <button id="btn-play-all" class="icon-btn" title="Stream all visible feeds"><i class="fa-solid fa-play"></i><span class="btn-label">Play All</span></button>
         
         <div class="desktop-actions">
+          <button id="btn-vault-desk" class="icon-btn red-accent" title="Secret Recordings Vault"><i class="fa-solid fa-circle-dot"></i><span class="btn-label">Vault</span><span id="vault-badge-desk" class="vault-badge hidden">0</span></button>
           <button id="btn-sync-desk" class="icon-btn" title="Check & Pull Git Updates"><i class="fa-solid fa-code-branch"></i><span id="desk-sync-label" class="btn-label">Sync</span></button>
           <button id="btn-add"     class="icon-btn green" title="Add feed"><i class="fa-solid fa-plus"></i><span class="btn-label">Add Feed</span></button>
           <button id="btn-wake"    class="icon-btn"       title="Keep screen on"><i class="fa-solid fa-sun"></i></button>
@@ -78,6 +79,7 @@
         <div class="mobile-actions">
           <button id="btn-mobile-menu" class="icon-btn" title="Menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
           <div id="mobile-menu" class="mobile-dropdown hidden">
+            <button id="btn-m-vault" class="m-item"><i class="fa-solid fa-circle-dot item-icon red-icon"></i> Recordings Vault <span id="vault-badge-m" class="vault-badge hidden">0</span></button>
             <button id="btn-m-sync" class="m-item"><i class="fa-solid fa-code-branch item-icon blue-icon"></i> <span id="m-sync-label">Git Auto-Sync</span></button>
             <button id="btn-m-add" class="m-item"><i class="fa-solid fa-plus item-icon green-icon"></i> Add New Feed</button>
             <button id="btn-m-wake" class="m-item"><i class="fa-solid fa-sun item-icon yellow-icon"></i> Keep Screen On</button>
@@ -148,8 +150,33 @@
     </div>
   </div>
 
+  <!-- ── Secret Recordings Vault Modal ──────────────────── -->
+  <div id="vault-modal" class="modal-bg hidden">
+    <div class="modal-box vault-box">
+      <div class="modal-hd">
+        <div class="vault-title-wrap">
+          <i class="fa-solid fa-shield-halved vault-icon"></i>
+          <div>
+            <h3>Secret Recordings Vault</h3>
+            <p class="vault-subtitle">Footage is stored in a hidden vault on the computer and automatically deleted upon download.</p>
+          </div>
+        </div>
+        <button class="close-btn" id="vault-close">&times;</button>
+      </div>
+
+      <div class="vault-toolbar">
+        <span id="vault-status-text">Loading recordings...</span>
+        <button id="btn-vault-refresh" class="status-btn" title="Refresh list"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+      </div>
+
+      <div id="vault-list" class="vault-list">
+        <!-- Recordings rendered dynamically -->
+      </div>
+    </div>
+  </div>
+
   <!-- JSMpeg player library (renders MPEG1 video on canvas via WebSocket) -->
   <script src="https://cdn.jsdelivr.net/gh/phoboslab/jsmpeg@master/jsmpeg.min.js"></script>
-  <script src="/app.js?v=2.7"></script>
+  <script src="/app.js?v=2.8"></script>
 </body>
 </html>

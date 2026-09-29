@@ -478,6 +478,219 @@ app.get('/api/feeds/status', authMiddleware, (req, res) => {
   res.json({ success: true, statuses: result });
 });
 
+// ── Secret Recordings Vault ───────────────────────────────────
+const VAULT_DIR = path.join(__dirname, '.vault');
+if (!fs.existsSync(VAULT_DIR)) {
+  try {
+    fs.mkdirSync(VAULT_DIR, { recursive: true, mode: 0o700 });
+  } catch (_) {}
+}
+
+// activeRecordings: feedId -> { proc, fileId, feedId, feedName, filePath, filename, startTime }
+const activeRecordings = new Map();
+
+app.post('/api/recordings/:id/start', authMiddleware, (req, res) => {
+  const feedId = req.params.id;
+  const feeds = getFeeds();
+  const feed = feeds.find(f => f.id === feedId);
+  if (!feed) return res.status(404).json({ success: false, message: 'Feed not found' });
+
+  if (activeRecordings.has(feedId)) {
+    const existing = activeRecordings.get(feedId);
+    return res.json({ success: true, recording: { fileId: existing.fileId, feedId, startTime: existing.startTime } });
+  }
+
+  const timestamp = Date.now();
+  const fileId = `rec_${feedId}_${timestamp}`;
+  const filename = `${fileId}.mp4`;
+  const filePath = path.join(VAULT_DIR, filename);
+
+  // Direct stream copy: 0% CPU overhead, native stream resolution, full audio
+  const args = [
+    '-loglevel', 'error',
+    '-rtsp_transport', 'tcp',
+    '-i', feed.url,
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-movflags', '+faststart',
+    '-y',
+    filePath
+  ];
+
+  console.log(`[Vault] Starting secret recording for [${feed.name || feedId}] -> ${filename}`);
+  const proc = spawn(FFMPEG_BIN, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+
+  const recordEntry = {
+    proc,
+    fileId,
+    feedId,
+    feedName: feed.name || feedId,
+    filePath,
+    filename,
+    startTime: timestamp
+  };
+
+  activeRecordings.set(feedId, recordEntry);
+
+  proc.on('exit', (code) => {
+    console.log(`[Vault] Recording finished for [${feedId}] (code ${code})`);
+    if (activeRecordings.get(feedId)?.fileId === fileId) {
+      activeRecordings.delete(feedId);
+    }
+  });
+
+  proc.on('error', (err) => {
+    console.error(`[Vault] Recording spawn error for [${feedId}]:`, err.message);
+    activeRecordings.delete(feedId);
+  });
+
+  res.json({
+    success: true,
+    message: 'Recording started',
+    recording: {
+      fileId,
+      feedId,
+      feedName: feed.name || feedId,
+      startTime: timestamp
+    }
+  });
+});
+
+app.post('/api/recordings/:id/stop', authMiddleware, async (req, res) => {
+  const feedId = req.params.id;
+  const recording = activeRecordings.get(feedId);
+  if (!recording) {
+    return res.status(404).json({ success: false, message: 'No active recording for this feed' });
+  }
+
+  activeRecordings.delete(feedId);
+
+  try {
+    if (recording.proc.stdin && recording.proc.stdin.writable) {
+      recording.proc.stdin.write('q');
+    } else {
+      recording.proc.kill('SIGINT');
+    }
+  } catch (_) {
+    try { recording.proc.kill('SIGINT'); } catch (_) {}
+  }
+
+  // Allow brief moment for MP4 faststart moov atom to finalize
+  await new Promise(r => setTimeout(r, 1200));
+
+  let size = 0;
+  try {
+    const stat = fs.statSync(recording.filePath);
+    size = stat.size;
+  } catch (_) {}
+
+  const durationSec = Math.max(1, Math.round((Date.now() - recording.startTime) / 1000));
+
+  res.json({
+    success: true,
+    message: 'Recording saved to secret vault',
+    file: {
+      fileId: recording.fileId,
+      filename: recording.filename,
+      size,
+      duration: durationSec
+    }
+  });
+});
+
+app.get('/api/recordings', authMiddleware, (req, res) => {
+  try {
+    if (!fs.existsSync(VAULT_DIR)) {
+      return res.json({ success: true, recordings: [], activeRecordings: {} });
+    }
+    const files = fs.readdirSync(VAULT_DIR)
+      .filter(f => f.endsWith('.mp4'))
+      .map(f => {
+        const full = path.join(VAULT_DIR, f);
+        const stat = fs.statSync(full);
+        const match = f.match(/^rec_(.+?)_(\d+)\.mp4$/);
+        const feedId = match ? match[1] : 'feed';
+        const timestamp = match ? parseInt(match[2], 10) : Math.round(stat.birthtimeMs);
+        const feed = getFeeds().find(c => c.id === feedId);
+        return {
+          fileId: path.basename(f, '.mp4'),
+          filename: f,
+          feedId,
+          feedName: feed ? feed.name : feedId,
+          size: stat.size,
+          createdAt: timestamp
+        };
+      })
+      .sort((a, b) => b.createdAt - a.createdAt);
+
+    const active = {};
+    activeRecordings.forEach((val, key) => {
+      active[key] = {
+        fileId: val.fileId,
+        startTime: val.startTime,
+        feedName: val.feedName
+      };
+    });
+
+    res.json({ success: true, recordings: files, activeRecordings: active });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Download & Auto-Purge from PC
+app.get('/api/recordings/:fileId/download', authMiddleware, (req, res) => {
+  const fileId = req.params.fileId;
+  const filename = `${fileId}.mp4`;
+  const filePath = path.join(VAULT_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('Recording file not found or already purged');
+  }
+
+  const stat = fs.statSync(filePath);
+  const friendlyName = `${fileId}.mp4`;
+
+  res.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Content-Length': stat.size,
+    'Content-Disposition': `attachment; filename="${friendlyName}"`,
+    'Cache-Control': 'no-store'
+  });
+
+  const readStream = fs.createReadStream(filePath);
+  readStream.pipe(res);
+
+  // Automatically delete from computer once downloaded
+  res.on('finish', () => {
+    console.log(`[Vault] Download finished for [${filename}]. Auto-purging from computer...`);
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[Vault] Successfully deleted [${filename}] from computer.`);
+        }
+      } catch (err) {
+        console.error('[Vault] Error during auto-purge:', err.message);
+      }
+    }, 1500);
+  });
+});
+
+app.delete('/api/recordings/:fileId', authMiddleware, (req, res) => {
+  const fileId = req.params.fileId;
+  const filePath = path.join(VAULT_DIR, `${fileId}.mp4`);
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return res.json({ success: true, message: 'Deleted from vault' });
+    }
+    res.status(404).json({ success: false, message: 'File not found' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ── Git Auto-Pull / Sync Worker ───────────────────────────────
 let lastGitSync = {
   currentCommit: 'unknown',
@@ -630,9 +843,15 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('═══════════════════════════════════════════════');
 });
 
-// Graceful shutdown: kill all FFmpeg processes
+// Graceful shutdown: kill all FFmpeg processes & finalize recordings
 function cleanupAll() {
-  console.log('[Server] Shutting down — killing all FFmpeg processes...');
+  console.log('[Server] Shutting down — finalizing recordings and killing all FFmpeg processes...');
+  activeRecordings.forEach((rec) => {
+    try {
+      if (rec.proc.stdin && rec.proc.stdin.writable) rec.proc.stdin.write('q');
+      else rec.proc.kill('SIGINT');
+    } catch (_) {}
+  });
   streamSessions.forEach((s) => {
     if (s.ffmpegProc) {
       if (process.platform === 'win32') {
