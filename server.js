@@ -28,19 +28,35 @@ const ADMIN_USER    = process.env.ADMIN_USER     || 'admin';
 const ADMIN_PASS    = process.env.ADMIN_PASS     || 'Aarav@2000';
 const FEEDS_FILE  = path.join(__dirname, 'feeds.json');
 
-// FFmpeg binary: auto-detected from ./ffmpeg/bin/ffmpeg.exe (Windows)
-// or system PATH on Linux/Mac
+// FFmpeg binary: auto-detected across Windows, macOS (Apple Silicon/Intel), Linux, WinGet, Chocolatey
 const FFMPEG_BIN = (() => {
-  const local = path.join(__dirname, 'ffmpeg', 'bin', 'ffmpeg.exe');
-  if (fs.existsSync(local)) return local;
-  const localMac = path.join(__dirname, 'ffmpeg', 'ffmpeg');
-  if (fs.existsSync(localMac)) return localMac;
-  if (fs.existsSync('/opt/homebrew/bin/ffmpeg')) return '/opt/homebrew/bin/ffmpeg';
-  if (fs.existsSync('/usr/local/bin/ffmpeg')) return '/usr/local/bin/ffmpeg';
+  const candidates = [
+    path.join(__dirname, 'ffmpeg', 'bin', 'ffmpeg.exe'),
+    path.join(__dirname, 'ffmpeg', 'ffmpeg'),
+    path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe'),
+    path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'chocolatey', 'bin', 'ffmpeg.exe'),
+    'C:\\ffmpeg\\bin\\ffmpeg.exe',
+    'C:\\ffmpeg\\ffmpeg.exe',
+    'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+    '/opt/homebrew/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg'
+  ];
+  for (const p of candidates) {
+    if (p && fs.existsSync(p)) return p;
+  }
   return 'ffmpeg'; // fall back to system PATH
 })();
 
 console.log(`[Stream Engine] FFmpeg binary: ${FFMPEG_BIN}`);
+
+function killProcess(proc) {
+  if (!proc || !proc.pid) return;
+  if (process.platform === 'win32') {
+    try { spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { stdio: 'ignore' }); } catch (_) {}
+  } else {
+    try { proc.kill('SIGKILL'); } catch (_) {}
+  }
+}
 
 // ── Feed Config Helpers ────────────────────────────────────
 function getFeeds() {
@@ -239,13 +255,7 @@ function stopStreamIfEmpty(sessionKey) {
   if (!session) return;
   if (session.clients.size === 0) {
     console.log(`[Stream] No viewers left for [${sessionKey}], stopping FFmpeg.`);
-    if (session.ffmpegProc) {
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', String(session.ffmpegProc.pid), '/f', '/t'], { stdio: 'ignore' });
-      } else {
-        try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
-      }
-    }
+    killProcess(session.ffmpegProc);
     streamSessions.delete(sessionKey);
   }
 }
@@ -347,7 +357,7 @@ app.put('/api/feeds/:id', authMiddleware, (req, res) => {
   // Kill existing stream so it reconnects with new config
   const session = streamSessions.get(req.params.id);
   if (session) {
-    try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
+    killProcess(session.ffmpegProc);
     streamSessions.delete(req.params.id);
   }
   res.json({ success: true });
@@ -392,7 +402,7 @@ app.delete('/api/feeds/:id', authMiddleware, (req, res) => {
   saveFeeds(feeds);
   const session = streamSessions.get(req.params.id);
   if (session) {
-    try { session.ffmpegProc.kill('SIGKILL'); } catch (_) {}
+    killProcess(session.ffmpegProc);
     streamSessions.delete(req.params.id);
   }
   res.json({ success: true });
@@ -854,11 +864,7 @@ function cleanupAll() {
   });
   streamSessions.forEach((s) => {
     if (s.ffmpegProc) {
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', String(s.ffmpegProc.pid), '/f', '/t'], { stdio: 'ignore' });
-      } else {
-        try { s.ffmpegProc.kill('SIGKILL'); } catch (_) {}
-      }
+      killProcess(s.ffmpegProc);
     }
   });
 }

@@ -1,163 +1,115 @@
 # Streaming Service
 
-A self-hosted live video streaming web application and Android PWA. Streams IP feed feeds over WebSocket using a 100% custom Node.js + FFmpeg engine with no third-party streaming middleware.
+A self-hosted live video streaming web application and PWA. Streams live video feeds over WebSocket using a 100% custom Node.js + FFmpeg engine with no third-party streaming middleware.
 
-Runs as a native Windows background service that starts automatically on boot.
+Runs as a native background service on both **macOS** (LaunchAgent daemon) and **Windows** (NSSM Windows Service) that starts automatically on boot.
+
+---
+
+## High-Availability (HA) Dual-Server Architecture
+
+Deploying both your **Mac Mini** and **Windows PC** to the same Cloudflare Tunnel creates an active-active failover cluster:
+
+```
+                          ┌───────────────────────────┐
+                          │ https://aa.horizonhuedigital.in │
+                          └─────────────┬─────────────┘
+                                        │
+                         Cloudflare Edge Load Balancer
+                               /             \
+                              /               \
+                             ▼                 ▼
+                 ┌───────────────────────┐ ┌───────────────────────┐
+                 │ Node 1: Mac Mini      │ │ Node 2: Windows PC    │
+                 │ (Bhakts-Mac-mini-2)   │ │ (Backup / Peer)       │
+                 │ Port 3000 (LaunchAgent│ │ Port 3000 (NSSM)      │
+                 └───────────┬───────────┘ └───────────┬───────────┘
+                             │                         │
+                             └───────────┬─────────────┘
+                                         ▼
+                             RTSP Feeds (192.168.29.x)
+```
+
+- **Zero Downtime:** If either computer is turned off, sleeps, reboots, or updates, the other node instantly and automatically handles 100% of the stream traffic.
+- **Git Auto-Sync:** Both servers automatically check for GitHub repository updates every 60 seconds and hot-reload.
 
 ---
 
 ## Features
 - **Custom WebSocket streaming engine** — FFmpeg spawned per viewer, zero-copy MPEG1 video piped to browser via WebSocket
 - **JSMpeg canvas player** — ~200ms ultra-low latency playback in any browser, no plugins
-- **Android PWA** — Install directly from Chrome as a native app on Android home screen
-- **JWT Authentication** — Session-based login, 30-day persistent cookie
-- **Dynamic Feed Management** — Add, edit or remove feed feeds from the UI without restarting
-- **Windows Auto-Start Service** — Registered as a native Windows Service (NSSM), starts before user login
-- **Cloudflare Tunnel** — Served to a public URL without port forwarding or static IP
+- **Digital Zoom & Pan** — Multi-touch pinch-to-zoom on phone, mouse wheel zoom on PC, drag to pan, and double-tap zoom
+- **On-Demand Recording** — Direct stream copy recording stored in secret hidden vault (`.vault/`) with auto-purge upon download
+- **Screen Keep-Awake** — Screen Wake Lock API prevents display timeout while streaming
+- **Android / iOS PWA** — Install directly to home screen for full-screen native experience
+- **JWT Authentication** — Session-based login with secure 30-day persistent cookie
+- **Dynamic Feed Management** — Add, edit, rename, or reorder feeds dynamically from the UI
+- **Auto-Failover Cloudflare Tunnel** — Seamless global access without port forwarding or static IP
 
 ---
 
-## Stack
-| Layer | Technology |
-|:------|:-----------|
-| Streaming Engine | Node.js + FFmpeg (RTSP → MPEG1 → WebSocket) |
-| Video Player | JSMpeg (canvas-based MPEG1 decoder) |
-| Backend API | Express.js + `ws` (WebSocket) |
-| Auth | JWT (jsonwebtoken) + HttpOnly cookies |
-| Frontend | Vanilla JS + HTML5 + CSS |
-| Mobile App | PWA (manifest + service worker) |
-| Tunnel | Cloudflare Tunnel (`cloudflared`) |
-| Windows Service | NSSM (auto-installed by setup script) |
+## Quick Setup (Windows PC as Backup Server)
 
----
+Open **PowerShell as Administrator** and run:
 
-## Quick Setup (Windows)
-
-### Prerequisites
-- [Node.js LTS](https://nodejs.org/) installed
-- A Cloudflare account with `horizonhuedigital.in` (or your domain) added
-
-### 1. Clone the repo
 ```powershell
-git clone https://github.com/horizonhuedigital/streaming-service.git
-cd streaming-service
-```
+# 1. Clone repository (or pull latest)
+git clone https://github.com/Aarav-47/streaming-service.git C:\streaming-service
+cd C:\streaming-service
 
-### 2. Create your `feeds.json`
-Copy the example and fill in your feed IPs and credentials:
-```powershell
-Copy-Item feeds.example.json feeds.json
-```
-Edit `feeds.json` with your feed details.
-
-### 3. Install as Windows Service (One Command)
-Open PowerShell **as Administrator** and run:
-```powershell
+# 2. Run automated installer (auto-configures FFmpeg, NSSM, feeds, and Cloudflare Tunnel)
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\install-service.ps1
+.\install-windows.ps1
 ```
-This automatically:
-* Downloads and extracts FFmpeg
-* Downloads NSSM
-* Installs `npm` dependencies
-* Registers `StreamingService` as a native Windows Service
-* Starts the service immediately
 
-### 4. Verify
-Open your browser to **`http://localhost:3000`**
-- **Username:** `admin`
-- **Password:** `admin@123` *(change in `.env`)*
+This single command automatically:
+1. Checks & installs Node.js if missing
+2. Downloads and configures FFmpeg
+3. Installs `npm` dependencies
+4. Verifies `feeds.json` with all 23 live feeds
+5. Registers & starts `StreamingService` as a 24/7 background Windows Service (auto-start on boot)
+6. Installs & connects `cloudflared` Windows Service with the failover tunnel token
+7. Configures Windows Firewall for port 3000
 
 ---
 
-## Cloudflare Tunnel Setup
+## Quick Setup (macOS Server)
+
+Open **Terminal** on macOS and run:
+
+```bash
+cd ~/Downloads
+git clone https://github.com/Aarav-47/streaming-service.git
+cd streaming-service
+chmod +x install-macos.sh setup-feeds.sh
+./install-macos.sh "eyJhIjoiZjE2MWM4MWExOTkzYmFiZDg2MDk1NGMyYWZlODZhYmQiLCJ0IjoiMmM4NjM3Y2YtYjlhNy00ZGI3LTkyOWYtZTU1MTJjZGQ2NmMyIiwicyI6IllUazVZakptWVdJdFl6RXlOQzAwTWpZNExXSTNNR0V0TldJNFltVTJPREF4TldNeiJ9"
+```
+
+---
+
+## Windows Service Management
+
 ```powershell
-# 1. Login (opens browser, select your domain)
-cloudflared tunnel login
+# Check service status
+Get-Service StreamingService, cloudflared
 
-# 2. Create tunnel
-cloudflared tunnel create streams
+# Restart service
+Restart-Service StreamingService
 
-# 3. Route your subdomain
-cloudflared tunnel route dns streams aa.horizonhuedigital.in
-
-# 4. Create config
-@"
-tunnel: streams
-credentials-file: $env:USERPROFILE\.cloudflared\streams.json
-ingress:
-  - hostname: aa.horizonhuedigital.in
-    service: http://localhost:3000
-  - service: http_status:404
-"@ | Out-File "$env:USERPROFILE\.cloudflared\config.yml" -Encoding ascii
-
-# 5. Install as Windows Service (auto-starts on boot)
-cloudflared service install
-Start-Service cloudflared
-```
-
----
-
-## Environment Variables (`.env`)
-```env
-PORT=3000
-ADMIN_USER=admin
-ADMIN_PASS=admin@123
-JWT_SECRET=your_custom_secret_here
-```
-
----
-
-## Android App
-1. Open Chrome on Android → navigate to `https://aa.horizonhuedigital.in`
-2. Tap **"Install App"** button (or Chrome menu → **Add to Home Screen**)
-3. App runs in full-screen standalone mode
-
----
-
-## Service Management
-```powershell
-# Stop service
-Stop-Service StreamingService
-
-# Start service
-Start-Service StreamingService
-
-# View logs
+# View live service logs
 Get-Content .\logs\service.log -Tail 50 -Wait
 
-# Uninstall service
-.\uninstall-service.ps1
+# Uninstall services (if needed)
+.\uninstall-windows.ps1
 ```
 
 ---
 
-## macOS Backup Server Setup (Auto-Failover)
-
-If your main Windows PC is turned off, restarted, or loses power, your Mac Mini will automatically back it up with **zero downtime** on the same domain (`https://aa.horizonhuedigital.in`).
-
-### 1. On your Windows PC (Get Cloudflare Tunnel Token)
-Open PowerShell and run:
-```powershell
-cloudflared tunnel token streams
-```
-*Copy the token string printed to your terminal.*
-
-### 2. On your Mac Mini (One-Step Installer)
-Open Terminal and run:
-```bash
-# Clone the repository
-git clone https://github.com/Aarav-47/streaming-service.git ~/streaming-service
-cd ~/streaming-service
-
-# Run installer (installs Node.js, FFmpeg, Cloudflared, LaunchAgent daemon)
-./install-macos.sh "<PASTE_TUNNEL_TOKEN_HERE>"
-```
-
-### 3. Verification
-- **Local Dashboard:** Open `http://localhost:3000` in Safari/Chrome on your Mac.
-- **Failover Test:** Turn off your Windows PC or run `Stop-Service StreamingService` on Windows.
-- Visit `https://aa.horizonhuedigital.in` — Cloudflare will automatically and instantly route all live traffic to your Mac Mini!
+## Credentials
+- **Public Domain:** `https://aa.horizonhuedigital.in`
+- **Local Dashboard:** `http://localhost:3000`
+- **Username:** `admin`
+- **Password:** `Aarav@2000`
 
 ---
 
