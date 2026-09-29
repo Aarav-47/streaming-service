@@ -538,61 +538,98 @@ html, body {
 .blue-icon { color: var(--accent); }
 .red-icon { color: var(--red); }
 
-/* ── Mobile Responsive Overrides ─────────── */
+/* ── Native Mobile Elements (Hidden on Desktop) ────────── */
+.floating-page-pill,
+.native-player-bar,
+.native-action-dock,
+.channel-strip-wrap,
+.mobile-gear-btn,
+.mobile-sheet-overlay {
+  display: none;
+}
+
+/* ── Mobile Responsive Overrides (Native App Layout) ──── */
 @media (max-width: 768px) {
   .btn-label { display: none; }
-  .brand-name { display: none; }
   .desktop-actions { display: none !important; }
   .desktop-only { display: none !important; }
-  .mobile-actions { display: block !important; }
+  .layout-tabs { display: none !important; }
+  .pager-controls { display: none !important; }
+  #btn-play-all { display: none !important; }
 
+  .mobile-actions { display: block !important; }
+  .mobile-gear-btn { display: flex !important; }
+  .floating-page-pill { display: flex !important; }
+  .native-player-bar { display: flex !important; }
+  .native-action-dock { display: flex !important; }
+  .channel-strip-wrap { display: flex !important; }
+
+  /* Native Mobile Top Bar */
   .header {
-    padding: 0 8px;
-    gap: 6px;
+    padding: 0 12px;
+    gap: 8px;
     height: 50px;
+    background: #080d18;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
   .brand {
-    gap: 6px;
+    gap: 8px;
+    display: flex;
+    align-items: center;
+  }
+  .brand-name {
+    display: inline-block !important;
+    font-size: 15px;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.2px;
   }
   .brand-icon {
     font-size: 18px;
+    color: #3b82f6;
   }
   .live-pill {
-    padding: 2px 6px;
+    padding: 2px 7px;
     font-size: 9px;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+    border-radius: 12px;
   }
-  .layout-tabs {
-    padding: 2px;
-    gap: 2px;
+  .mobile-gear-btn {
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all .15s ease;
   }
-  .tab-btn {
-    padding: 4px 8px;
-    font-size: 11px;
+  .mobile-gear-btn:active {
+    transform: scale(0.92);
+    background: rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
+    color: #fff;
   }
-  .pager-controls {
-    padding: 2px 4px;
-    gap: 2px;
-  }
-  .pager-btn {
-    padding: 2px 5px;
-    font-size: 10px;
-  }
-  .page-indicator {
-    font-size: 10px;
-    min-width: 28px;
-  }
-  .icon-btn {
-    padding: 5px 8px;
-    font-size: 12px;
-  }
+
+  /* Grid Wrap & Floating Page Pill (DMSS Style) */
   .grid-wrap {
-    padding: 6px 4px;
+    position: relative;
+    padding: 6px;
+    background: #04060a;
     display: flex;
     flex-direction: column;
+    touch-action: pan-y;
   }
   .grid {
-    gap: 4px;
-    align-content: start;
+    gap: 5px;
     width: 100%;
   }
 
@@ -603,16 +640,269 @@ html, body {
   .g4 { grid-template-columns: repeat(2, 1fr); }
   .g0 { grid-template-columns: repeat(2, 1fr); }
 
-  .cam-card {
-    border-radius: 6px;
-    border-color: rgba(255, 255, 255, 0.1);
+  .floating-page-pill {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    z-index: 25;
+    align-items: center;
+    gap: 6px;
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    padding: 3px 9px;
+    color: #f1f5f9;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  }
+  .pill-nav-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 11px;
+    padding: 2px 4px;
+    cursor: pointer;
+  }
+  .pill-nav-btn:active {
+    color: #3b82f6;
   }
 
-  /* Card bar on mobile 2x2: clean, minimal, non-overlapping */
+  /* Dedicated Native Player Bar (DMSS Toolbar directly below grid) */
+  .native-player-bar {
+    align-items: center;
+    justify-content: space-around;
+    background: #0c1220;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    gap: 8px;
+  }
+  .np-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 38px;
+    border-radius: 8px;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .np-btn:active {
+    transform: scale(0.92);
+    background: rgba(59, 130, 246, 0.25);
+    color: #fff;
+    border-color: #3b82f6;
+  }
+  .np-btn.playing {
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.18);
+  }
+  .np-pill-btn {
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+  .np-pill-btn.active {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
+    color: #93c5fd;
+  }
+
+  /* Native Action Dock (Circular Action Buttons, DMSS Style) */
+  .native-action-dock {
+    align-items: center;
+    justify-content: space-around;
+    background: #080c16;
+    padding: 12px 6px 10px 6px;
+    gap: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .dock-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    min-width: 56px;
+  }
+  .dock-circle {
+    position: relative;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    transition: all .15s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  }
+  .dock-btn:active .dock-circle {
+    transform: scale(0.9);
+  }
+  .dock-circle.red {
+    background: linear-gradient(135deg, rgba(239,68,68,0.25), rgba(185,28,28,0.15));
+    border: 1px solid rgba(239,68,68,0.45);
+    color: #f87171;
+  }
+  .dock-circle.blue {
+    background: linear-gradient(135deg, rgba(59,130,246,0.25), rgba(29,78,216,0.15));
+    border: 1px solid rgba(59,130,246,0.45);
+    color: #60a5fa;
+  }
+  .dock-circle.purple {
+    background: linear-gradient(135deg, rgba(168,85,247,0.25), rgba(126,34,206,0.15));
+    border: 1px solid rgba(168,85,247,0.45);
+    color: #c084fc;
+  }
+  .dock-circle.green {
+    background: linear-gradient(135deg, rgba(34,197,94,0.25), rgba(21,128,61,0.15));
+    border: 1px solid rgba(34,197,94,0.45);
+    color: #4ade80;
+  }
+  .dock-circle.amber {
+    background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(180,83,9,0.15));
+    border: 1px solid rgba(245,158,11,0.45);
+    color: #fbbf24;
+  }
+  .dock-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-align: center;
+  }
+  .dock-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    border-radius: 10px;
+    padding: 1px 5px;
+    border: 2px solid #080c16;
+  }
+  .dock-dot {
+    position: absolute;
+    bottom: 1px;
+    right: 1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid #080c16;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.9);
+  }
+  .dock-dot.standby {
+    background: #f59e0b;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.9);
+  }
+  .dock-dot.offline {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.9);
+  }
+
+  /* Quick Channel Strip / Feed Selector */
+  .channel-strip-wrap {
+    flex-direction: column;
+    background: #0c1220;
+    margin: 8px 8px 16px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8px 10px;
+  }
+  .channel-strip-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .channel-strip-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .channel-strip-hint {
+    font-size: 10px;
+    color: #64748b;
+  }
+  .channel-chips-container {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 3px 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .channel-chips-container::-webkit-scrollbar {
+    display: none;
+  }
+  .channel-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: rgba(30, 41, 59, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all .12s ease;
+  }
+  .channel-chip:active {
+    transform: scale(0.95);
+  }
+  .channel-chip.active {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
+    color: #93c5fd;
+  }
+  .channel-chip .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #64748b;
+  }
+  .channel-chip.playing .chip-dot {
+    background: #22c55e;
+    box-shadow: 0 0 4px rgba(34, 197, 94, 0.8);
+  }
+
+  /* Uncluttered 2x2 Video Cards (DMSS Style) */
+  .cam-card {
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: border-color .15s ease;
+  }
+  .cam-card.focused-card {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+  }
   .cam-bar {
-    height: 28px;
-    padding: 0 4px;
-    background: linear-gradient(180deg, rgba(7,9,15,0.96) 0%, rgba(7,9,15,0.7) 100%);
+    height: 26px;
+    padding: 0 6px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 100%);
+    z-index: 10;
   }
   .cam-info {
     gap: 4px;
@@ -624,54 +914,50 @@ html, body {
     font-weight: 800;
     padding: 1px 4px;
     border-radius: 3px;
+    background: #2563eb;
+    color: #fff;
   }
   .cam-name {
     font-size: 10px;
     font-weight: 600;
-    max-width: 80px;
+    max-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: #e2e8f0;
   }
-  .cam-name i {
-    display: none !important;
-  }
-  .cam-actions {
-    gap: 2px;
-  }
-  .cam-btn {
-    min-width: 22px;
-    height: 22px;
-    padding: 1px 3px;
-    font-size: 9px;
-    border-radius: 4px;
-  }
-  .q-toggle-btn {
-    min-width: 24px;
-    height: 22px;
-    font-size: 9px;
-    font-weight: 800;
-    padding: 0 3px;
-    border-radius: 4px;
-    background: rgba(37, 99, 235, 0.25);
-    border-color: rgba(59, 130, 246, 0.5);
-    color: #93c5fd;
-  }
-  .q-toggle-btn.hd-active {
-    background: rgba(245, 158, 11, 0.25);
-    border-color: rgba(245, 158, 11, 0.6);
-    color: #fde68a;
-  }
+  .cam-name i { display: none !important; }
 
-  /* On mobile 2x2 grid: hide administrative buttons so card is clutter-free */
+  /* On 2x2 grid: HIDE cluttered buttons from card top bar! */
+  .cam-card .play-btn,
+  .cam-card .rec-btn,
+  .cam-card .zoom-btn,
   .cam-card .move-btn,
   .cam-card .rename-btn,
+  .cam-card .audio-btn,
+  .cam-card .fs-btn,
   .cam-card .del {
     display: none !important;
   }
+  .cam-card .q-toggle-btn {
+    display: inline-flex !important;
+    min-width: 26px;
+    height: 20px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #cbd5e1;
+  }
 
-  /* When single feed (1 View) is selected on mobile: restore full controls */
-  .g1 .cam-card .move-btn,
+  /* Single Feed (1 View): show complete full controls */
+  .g1 .cam-card .play-btn,
+  .g1 .cam-card .rec-btn,
+  .g1 .cam-card .zoom-btn,
+  .g1 .cam-card .audio-btn,
+  .g1 .cam-card .fs-btn,
   .g1 .cam-card .rename-btn,
   .g1 .cam-card .del {
     display: inline-flex !important;
@@ -687,6 +973,147 @@ html, body {
   .g1 .cam-btn {
     min-width: 26px;
     height: 26px;
+    font-size: 11px;
+  }
+
+  /* Native Slide-up Settings Sheet */
+  .mobile-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .mobile-sheet {
+    width: 100%;
+    max-width: 520px;
+    background: #0f172a;
+    border-radius: 18px 18px 0 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 12px 16px 28px 16px;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.7);
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .mobile-sheet-drag-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.25);
+    margin: 0 auto 10px auto;
+  }
+  .mobile-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .sheet-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f1f5f9;
+  }
+  .sheet-title-wrap h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .sheet-node-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .sheet-node-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .sheet-node-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .sheet-node-info strong {
+    font-size: 13px;
+    color: #f8fafc;
+  }
+  .sheet-node-info span {
+    font-size: 10px;
+    color: #94a3b8;
+  }
+  .sheet-action-pill {
+    background: rgba(59, 130, 246, 0.25);
+    border: 1px solid #3b82f6;
+    color: #93c5fd;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .sheet-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sheet-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 12px;
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    color: #f1f5f9;
+    text-align: left;
+    cursor: pointer;
+    transition: all .12s ease;
+  }
+  .sheet-menu-item:active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+  .sheet-menu-item.danger {
+    color: #f87171;
+  }
+  .sheet-item-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .sheet-item-text strong {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .sheet-item-text span {
+    font-size: 10px;
+    color: #94a3b8;
+  }
+  .sheet-badge {
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .item-arrow {
+    color: #64748b;
     font-size: 11px;
   }
 }

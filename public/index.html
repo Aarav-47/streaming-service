@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-title" content="Streaming" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
-  <link rel="stylesheet" href="/style.css?v=4.0" />
+  <link rel="stylesheet" href="/style.css?v=5.0" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />
 </head>
 <body>
@@ -47,26 +47,27 @@
   <div id="app" class="app hidden">
 
     <!-- Header -->
+    <!-- Header -->
     <header class="header">
       <div class="brand">
         <i class="fa-solid fa-tower-broadcast brand-icon"></i>
         <span class="brand-name">Streaming Service</span>
         <span class="live-pill"><span class="dot"></span>LIVE</span>
-        <button id="btn-server-node" class="server-node-pill" title="Connected Server Node (Click to View / Switch)"><span class="node-dot"></span><i id="node-os-icon" class="fa-solid fa-server"></i><span id="node-name-label">Detecting...</span></button>
+        <button id="btn-server-node" class="server-node-pill desktop-only" title="Connected Server Node (Click to View / Switch)"><span class="node-dot"></span><i id="node-os-icon" class="fa-solid fa-server"></i><span id="node-name-label">Detecting...</span></button>
       </div>
       <nav class="nav">
-        <div class="layout-tabs">
+        <div class="layout-tabs desktop-only">
           <button class="tab-btn" data-grid="1"  title="1 View">1</button>
           <button class="tab-btn active" data-grid="4"  title="4 View (2×2)">4</button>
           <button class="tab-btn desktop-only" data-grid="9"  title="9 View (3×3)">9</button>
           <button class="tab-btn desktop-only" data-grid="0"  title="All Feeds">All</button>
         </div>
-        <div class="pager-controls" id="pager-wrap">
+        <div class="pager-controls desktop-only" id="pager-wrap">
           <button id="btn-prev-page" class="pager-btn" title="Previous Page"><i class="fa-solid fa-chevron-left"></i></button>
           <span id="page-indicator" class="page-indicator">1 / 6</span>
           <button id="btn-next-page" class="pager-btn" title="Next Page"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
-        <button id="btn-play-all" class="icon-btn" title="Stream all visible feeds"><i class="fa-solid fa-play"></i><span class="btn-label">Play All</span></button>
+        <button id="btn-play-all" class="icon-btn desktop-only" title="Stream all visible feeds"><i class="fa-solid fa-play"></i><span class="btn-label">Play All</span></button>
         
         <div class="desktop-actions">
           <button id="btn-server-desk" class="icon-btn" title="Streaming Server Cluster & Switcher"><i class="fa-solid fa-server"></i><span id="desk-server-label" class="btn-label">Server</span></button>
@@ -79,24 +80,151 @@
         </div>
 
         <div class="mobile-actions">
-          <button id="btn-mobile-menu" class="icon-btn" title="Menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-          <div id="mobile-menu" class="mobile-dropdown hidden">
-            <button id="btn-m-server" class="m-item"><i class="fa-solid fa-server item-icon blue-icon"></i> <span id="m-server-label">Switch Server Node</span></button>
-            <button id="btn-m-vault" class="m-item"><i class="fa-solid fa-circle-dot item-icon red-icon"></i> Recordings Vault <span id="vault-badge-m" class="vault-badge hidden">0</span></button>
-            <button id="btn-m-sync" class="m-item"><i class="fa-solid fa-code-branch item-icon blue-icon"></i> <span id="m-sync-label">Git Auto-Sync</span></button>
-            <button id="btn-m-add" class="m-item"><i class="fa-solid fa-plus item-icon green-icon"></i> Add New Feed</button>
-            <button id="btn-m-wake" class="m-item"><i class="fa-solid fa-sun item-icon yellow-icon"></i> Keep Screen On</button>
-            <button id="btn-m-install" class="m-item"><i class="fa-solid fa-download item-icon blue-icon"></i> Install App</button>
-            <button id="btn-m-logout" class="m-item danger"><i class="fa-solid fa-right-from-bracket item-icon red-icon"></i> Logout</button>
-          </div>
+          <button id="btn-mobile-gear" class="mobile-gear-btn" title="Settings & Management"><i class="fa-solid fa-gear"></i></button>
         </div>
       </nav>
     </header>
 
-    <!-- Feed Grid -->
-    <main class="grid-wrap">
+    <!-- Feed Grid Container -->
+    <main class="grid-wrap" id="grid-wrap">
       <div id="grid" class="grid g2"></div>
+
+      <!-- Floating Page Pill over Grid (Native DMSS Style) -->
+      <div class="floating-page-pill" id="floating-page-pill">
+        <button id="btn-pill-prev" class="pill-nav-btn" title="Previous Page"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="pill-page-label">1 / 6</span>
+        <button id="btn-pill-next" class="pill-nav-btn" title="Next Page"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
     </main>
+
+    <!-- Native Player Toolbar (Directly Below Grid, DMSS Style) -->
+    <div class="native-player-bar" id="native-player-bar">
+      <button class="np-btn" id="np-btn-play" title="Play or Stop All Visible Feeds">
+        <i class="fa-solid fa-play"></i>
+      </button>
+      <button class="np-btn np-pill-btn" id="np-btn-quality" title="Toggle Quality (SD / HD)">
+        <span id="np-quality-label">SD</span>
+      </button>
+      <button class="np-btn" id="np-btn-audio" title="Mute / Unmute Audio">
+        <i class="fa-solid fa-volume-xmark"></i>
+      </button>
+      <button class="np-btn np-pill-btn active" id="np-btn-grid" title="Switch 1-View or 4-View">
+        <span id="np-grid-label">4</span>
+      </button>
+      <button class="np-btn" id="np-btn-fullscreen" title="Fullscreen Viewport">
+        <i class="fa-solid fa-expand"></i>
+      </button>
+    </div>
+
+    <!-- Native Action Dock (Circular Action Buttons, DMSS Style) -->
+    <div class="native-action-dock" id="native-action-dock">
+      <button class="dock-btn" id="dock-btn-vault" title="Secret Recordings Vault">
+        <div class="dock-circle red"><i class="fa-solid fa-circle-dot"></i><span id="vault-badge-dock" class="dock-badge hidden">0</span></div>
+        <span class="dock-text">Vault</span>
+      </button>
+      <button class="dock-btn" id="dock-btn-server" title="Server Cluster Status & Switcher">
+        <div class="dock-circle blue"><i id="dock-server-icon" class="fa-solid fa-server"></i><span id="dock-server-dot" class="dock-dot online"></span></div>
+        <span class="dock-text" id="dock-server-text">Server</span>
+      </button>
+      <button class="dock-btn" id="dock-btn-sync" title="Git Auto-Sync">
+        <div class="dock-circle purple"><i class="fa-solid fa-code-branch"></i></div>
+        <span class="dock-text" id="dock-sync-text">Sync</span>
+      </button>
+      <button class="dock-btn" id="dock-btn-add" title="Add New Feed">
+        <div class="dock-circle green"><i class="fa-solid fa-plus"></i></div>
+        <span class="dock-text">Add Feed</span>
+      </button>
+      <button class="dock-btn" id="dock-btn-wake" title="Keep Screen On">
+        <div class="dock-circle amber"><i class="fa-solid fa-sun"></i></div>
+        <span class="dock-text" id="dock-wake-text">Awake</span>
+      </button>
+    </div>
+
+    <!-- Quick Feed / Channel Strip (Fast Tap Navigation) -->
+    <div class="channel-strip-wrap" id="channel-strip-wrap">
+      <div class="channel-strip-header">
+        <span class="channel-strip-title"><i class="fa-solid fa-layer-group"></i> Quick Feeds (<span id="channel-total-count">0</span>)</span>
+        <span class="channel-strip-hint">Tap feed to jump</span>
+      </div>
+      <div class="channel-chips-container" id="channel-chips-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- Mobile Settings Sheet / Drawer (Slide-up native menu) -->
+    <div id="mobile-sheet-overlay" class="mobile-sheet-overlay hidden">
+      <div class="mobile-sheet" id="mobile-sheet">
+        <div class="mobile-sheet-drag-bar"></div>
+        <div class="mobile-sheet-header">
+          <div class="sheet-title-wrap">
+            <i class="fa-solid fa-sliders"></i>
+            <h3>Settings & Node Controls</h3>
+          </div>
+          <button id="mobile-sheet-close" class="close-btn">&times;</button>
+        </div>
+        <div class="mobile-sheet-body">
+          <div class="sheet-node-banner" id="sheet-node-banner">
+            <div class="sheet-node-icon"><i id="sheet-os-icon" class="fa-solid fa-server"></i></div>
+            <div class="sheet-node-info">
+              <strong id="sheet-node-name">Detecting Server...</strong>
+              <span id="sheet-node-sub">Cloudflare High-Availability Cluster</span>
+            </div>
+            <button id="btn-sheet-server" class="sheet-action-pill">Cluster</button>
+          </div>
+          
+          <div class="sheet-menu-list">
+            <button id="btn-sheet-vault" class="sheet-menu-item">
+              <i class="fa-solid fa-circle-dot red-icon"></i>
+              <div class="sheet-item-text">
+                <strong>Recordings Vault</strong>
+                <span>View snapshots & secret video clips</span>
+              </div>
+              <span id="vault-badge-sheet" class="sheet-badge hidden">0</span>
+              <i class="fa-solid fa-chevron-right item-arrow"></i>
+            </button>
+            <button id="btn-sheet-sync" class="sheet-menu-item">
+              <i class="fa-solid fa-code-branch blue-icon"></i>
+              <div class="sheet-item-text">
+                <strong id="sheet-sync-label">Git Auto-Sync</strong>
+                <span id="sheet-sync-sub">Sync with GitHub main</span>
+              </div>
+              <i class="fa-solid fa-chevron-right item-arrow"></i>
+            </button>
+            <button id="btn-sheet-add" class="sheet-menu-item">
+              <i class="fa-solid fa-plus green-icon"></i>
+              <div class="sheet-item-text">
+                <strong>Add New Feed</strong>
+                <span>Configure RTSP stream</span>
+              </div>
+              <i class="fa-solid fa-chevron-right item-arrow"></i>
+            </button>
+            <button id="btn-sheet-wake" class="sheet-menu-item">
+              <i class="fa-solid fa-sun yellow-icon"></i>
+              <div class="sheet-item-text">
+                <strong>Keep Screen On</strong>
+                <span id="sheet-wake-sub">Prevent screen from sleeping</span>
+              </div>
+              <span id="sheet-wake-toggle" class="toggle-pill">OFF</span>
+            </button>
+            <button id="btn-sheet-install" class="sheet-menu-item hidden">
+              <i class="fa-solid fa-download blue-icon"></i>
+              <div class="sheet-item-text">
+                <strong>Install App (PWA)</strong>
+                <span>Add to home screen for fullscreen native experience</span>
+              </div>
+              <i class="fa-solid fa-chevron-right item-arrow"></i>
+            </button>
+            <button id="btn-sheet-logout" class="sheet-menu-item danger">
+              <i class="fa-solid fa-right-from-bracket red-icon"></i>
+              <div class="sheet-item-text">
+                <strong>Logout</strong>
+                <span>Disconnect session</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ── Add / Edit Feed Modal ─────────────────────────── -->
@@ -240,6 +368,10 @@
                   <span class="current-tag" id="tag-auto">ACTIVE</span>
                 </div>
                 <div class="server-card-desc">Active-Active cluster. Automatically streams from whichever server is online with zero downtime.</div>
+                <div class="server-card-input-row" style="margin-top:8px;">
+                  <button id="btn-ping-auto" class="ping-btn" title="Test Live Connection"><i class="fa-solid fa-bolt"></i> Ping</button>
+                  <span id="ping-res-auto" class="ping-badge online">🟢 Ready</span>
+                </div>
               </div>
               <button class="btn-switch-node" data-target="auto">Use Auto</button>
             </div>
@@ -254,7 +386,7 @@
                 </div>
                 <div class="server-card-input-row">
                   <input type="text" id="input-mac-url" placeholder="http://Bhakts-Mac-mini-2.local:3000" class="server-url-input" />
-                  <button id="btn-ping-mac" class="ping-btn" title="Test Connection"><i class="fa-solid fa-bolt"></i> Ping</button>
+                  <button id="btn-ping-mac" class="ping-btn" title="Test Connection via LAN"><i class="fa-solid fa-bolt"></i> Ping</button>
                   <span id="ping-res-mac" class="ping-badge"></span>
                 </div>
               </div>
@@ -271,7 +403,7 @@
                 </div>
                 <div class="server-card-input-row">
                   <input type="text" id="input-win-url" placeholder="http://localhost:3000" class="server-url-input" />
-                  <button id="btn-ping-win" class="ping-btn" title="Test Connection"><i class="fa-solid fa-bolt"></i> Ping</button>
+                  <button id="btn-ping-win" class="ping-btn" title="Test Connection via LAN"><i class="fa-solid fa-bolt"></i> Ping</button>
                   <span id="ping-res-win" class="ping-badge"></span>
                 </div>
               </div>
@@ -303,6 +435,6 @@
 
   <!-- JSMpeg player library (renders MPEG1 video on canvas via WebSocket) -->
   <script src="https://cdn.jsdelivr.net/gh/phoboslab/jsmpeg@master/jsmpeg.min.js"></script>
-  <script src="/app.js?v=4.0"></script>
+  <script src="/app.js?v=5.0"></script>
 </body>
 </html>

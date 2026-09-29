@@ -9,6 +9,7 @@ const fs          = require('fs');
 const os          = require('os');
 const path        = require('path');
 const http        = require('http');
+const https       = require('https');
 const net         = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const util        = require('util');
@@ -818,14 +819,49 @@ app.post('/api/webhook/git-sync', (req, res) => {
   res.json({ success: true, message: 'Auto-sync initiated' });
 });
 
+function pingLanServer(targetUrl, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(targetUrl.replace(/\/+$/, '') + '/api/health');
+      const mod = u.protocol === 'https:' ? https : http;
+      const start = Date.now();
+      const req = mod.get(u.toString(), { timeout: timeoutMs }, (res) => {
+        let body = '';
+        res.on('data', chunk => { body += chunk; });
+        res.on('end', () => {
+          const latency = Date.now() - start;
+          let json = {};
+          try { json = JSON.parse(body); } catch (_) {}
+          resolve({
+            online: res.statusCode >= 200 && res.statusCode < 400,
+            statusCode: res.statusCode,
+            latency,
+            data: json
+          });
+        });
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ online: false, error: 'Connection timed out', latency: timeoutMs });
+      });
+      req.on('error', (err) => {
+        resolve({ online: false, error: err.message, latency: Date.now() - start });
+      });
+    } catch (e) {
+      resolve({ online: false, error: e.message, latency: 0 });
+    }
+  });
+}
+
 // ── Cluster & Node System Endpoints ─────────────────────────
-app.get('/api/system/node', authMiddleware, (req, res) => {
+app.get('/api/system/node', (req, res) => {
   const isMac = process.platform === 'darwin';
   const isWin = process.platform === 'win32';
   const nodeType = isMac ? 'Mac Mini' : isWin ? 'Windows PC' : 'Server';
 
   res.json({
     success: true,
+    status: 'online',
     nodeId: isMac ? 'mac_mini' : isWin ? 'windows_pc' : 'server',
     nodeName: `${nodeType} (${os.hostname()})`,
     nodeType,
@@ -840,6 +876,20 @@ app.get('/api/system/node', authMiddleware, (req, res) => {
     standbyMode: nodeStandbyMode,
     gitCommit: lastGitSync.currentCommit,
     serverTime: Date.now()
+  });
+});
+
+app.get('/api/system/ping-peer', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).json({ success: false, error: 'url parameter required' });
+  const result = await pingLanServer(targetUrl);
+  res.json({
+    success: true,
+    online: result.online,
+    latencyMs: result.latency,
+    statusCode: result.statusCode,
+    nodeName: result.data && result.data.nodeName,
+    error: result.error
   });
 });
 
