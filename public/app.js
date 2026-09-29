@@ -254,32 +254,29 @@ function renderGrid() {
           <span class="cam-name" id="name-${cam.id}"><i class="fa-solid fa-video" style="margin-right:4px;opacity:.6"></i>${escapeHtml(cam.name)}</span>
         </div>
         <div class="cam-actions">
-          <div class="quality-toggle" title="Stream Quality">
-            <button class="q-btn ${q === 'sd' ? 'active' : ''}" id="qsd-${cam.id}" onclick="setFeedQuality('${cam.id}', 'sd')">SD</button>
-            <button class="q-btn ${q === 'hd' ? 'active' : ''}" id="qhd-${cam.id}" onclick="setFeedQuality('${cam.id}', 'hd')">HD</button>
-          </div>
-          <button class="cam-btn play-btn ${isPlaying ? 'playing' : ''}" id="playbtn-${cam.id}" title="${isPlaying ? 'Stop Feed' : 'Start Feed'}" onclick="toggleFeedPlay('${cam.id}')">
+          <button class="cam-btn q-toggle-btn ${q === 'hd' ? 'hd-active' : ''}" id="qtoggle-${cam.id}" onclick="event.stopPropagation(); toggleQuality('${cam.id}')" title="Stream Quality: ${q.toUpperCase()}">${q.toUpperCase()}</button>
+          <button class="cam-btn play-btn ${isPlaying ? 'playing' : ''}" id="playbtn-${cam.id}" title="${isPlaying ? 'Stop Feed' : 'Start Feed'}" onclick="event.stopPropagation(); toggleFeedPlay('${cam.id}')">
             <i class="fa-solid ${isPlaying ? 'fa-stop' : 'fa-play'}"></i>
           </button>
-          <button class="cam-btn ctrl-btn rec-btn ${isRec ? 'recording' : ''}" id="recbtn-${cam.id}" title="${isRec ? 'Stop Recording' : 'Start Secret Recording'}" onclick="toggleRecord('${cam.id}')">
+          <button class="cam-btn ctrl-btn rec-btn ${isRec ? 'recording' : ''}" id="recbtn-${cam.id}" title="${isRec ? 'Stop Recording' : 'Start Secret Recording'}" onclick="event.stopPropagation(); toggleRecord('${cam.id}')">
             <i class="fa-solid fa-circle-dot"></i>
           </button>
-          <button class="cam-btn move-btn" title="Move Left" onclick="moveFeed('${cam.id}', -1)">
+          <button class="cam-btn move-btn" title="Move Left" onclick="event.stopPropagation(); moveFeed('${cam.id}', -1)">
             <i class="fa-solid fa-arrow-left"></i>
           </button>
-          <button class="cam-btn move-btn" title="Move Right" onclick="moveFeed('${cam.id}', 1)">
+          <button class="cam-btn move-btn" title="Move Right" onclick="event.stopPropagation(); moveFeed('${cam.id}', 1)">
             <i class="fa-solid fa-arrow-right"></i>
           </button>
-          <button class="cam-btn audio-btn" id="audio-${cam.id}" title="Unmute Audio" onclick="toggleAudio('${cam.id}')">
+          <button class="cam-btn audio-btn" id="audio-${cam.id}" title="Unmute Audio" onclick="event.stopPropagation(); toggleAudio('${cam.id}')">
             <i class="fa-solid fa-volume-xmark"></i>
           </button>
-          <button class="cam-btn rename-btn" title="Rename Feed" onclick="renameFeed('${cam.id}')">
+          <button class="cam-btn rename-btn" title="Rename Feed" onclick="event.stopPropagation(); renameFeed('${cam.id}')">
             <i class="fa-solid fa-pen"></i>
           </button>
-          <button class="cam-btn fs-btn" title="Fullscreen" onclick="toggleFS('${cam.id}')">
+          <button class="cam-btn fs-btn" title="Fullscreen" onclick="event.stopPropagation(); toggleFS('${cam.id}')">
             <i class="fa-solid fa-expand"></i>
           </button>
-          <button class="cam-btn del" title="Remove" onclick="removeCam('${cam.id}')">
+          <button class="cam-btn del" title="Remove" onclick="event.stopPropagation(); removeCam('${cam.id}')">
             <i class="fa-solid fa-trash"></i>
           </button>
         </div>
@@ -394,6 +391,12 @@ window.toggleFeedPlay = function(id) {
   }
 };
 
+window.toggleQuality = function(id) {
+  const current = feedQuality[id] || 'sd';
+  const next = current === 'sd' ? 'hd' : 'sd';
+  setFeedQuality(id, next);
+};
+
 window.setFeedQuality = function(id, quality) {
   feedQuality[id] = quality;
   const qsd = document.getElementById(`qsd-${id}`);
@@ -401,6 +404,12 @@ window.setFeedQuality = function(id, quality) {
   if (qsd && qhd) {
     qsd.classList.toggle('active', quality === 'sd');
     qhd.classList.toggle('active', quality === 'hd');
+  }
+  const qtoggle = document.getElementById(`qtoggle-${id}`);
+  if (qtoggle) {
+    qtoggle.textContent = quality.toUpperCase();
+    qtoggle.title = `Stream Quality: ${quality.toUpperCase()}`;
+    qtoggle.classList.toggle('hd-active', quality === 'hd');
   }
   if (feedPlaying[id]) {
     startFeed(id);

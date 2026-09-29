@@ -171,14 +171,27 @@ html, body {
 }
 
 /* ── App Layout ───────────────────────────── */
-.app { display: flex; flex-direction: column; height: 100vh; }
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
 .grid-wrap {
-  flex: 1; overflow-y: auto; padding: 10px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Grid Layouts ─────────────────────────── */
 .grid {
-  display: grid; gap: 8px; min-height: 100%;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  width: 100%;
 }
 .g1 { grid-template-columns: 1fr; }
 .g2 { grid-template-columns: repeat(2, 1fr); }
@@ -573,10 +586,14 @@ html, body {
     font-size: 12px;
   }
   .grid-wrap {
-    padding: 4px;
+    padding: 6px 4px;
+    display: flex;
+    flex-direction: column;
   }
   .grid {
-    gap: 6px;
+    gap: 4px;
+    align-content: start;
+    width: 100%;
   }
 
   /* 4 feeds visible at once on mobile (2x2) */
@@ -586,34 +603,64 @@ html, body {
   .g4 { grid-template-columns: repeat(2, 1fr); }
   .g0 { grid-template-columns: repeat(2, 1fr); }
 
+  .cam-card {
+    border-radius: 6px;
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
   /* Card bar on mobile 2x2: clean, minimal, non-overlapping */
   .cam-bar {
     height: 28px;
     padding: 0 4px;
+    background: linear-gradient(180deg, rgba(7,9,15,0.96) 0%, rgba(7,9,15,0.7) 100%);
+  }
+  .cam-info {
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
   }
   .cam-sno {
     font-size: 9px;
-    padding: 1px 3px;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 3px;
   }
   .cam-name {
     font-size: 10px;
-    max-width: 55px;
+    font-weight: 600;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cam-name i {
+    display: none !important;
   }
   .cam-actions {
     gap: 2px;
   }
-  .quality-toggle {
-    padding: 1px;
-  }
-  .q-btn {
-    font-size: 8px;
-    padding: 1px 3px;
-  }
   .cam-btn {
-    min-width: 20px;
-    height: 20px;
+    min-width: 22px;
+    height: 22px;
     padding: 1px 3px;
     font-size: 9px;
+    border-radius: 4px;
+  }
+  .q-toggle-btn {
+    min-width: 24px;
+    height: 22px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 0 3px;
+    border-radius: 4px;
+    background: rgba(37, 99, 235, 0.25);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #93c5fd;
+  }
+  .q-toggle-btn.hd-active {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.6);
+    color: #fde68a;
   }
 
   /* On mobile 2x2 grid: hide administrative buttons so card is clutter-free */
