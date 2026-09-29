@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-title" content="Streaming" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
-  <link rel="stylesheet" href="/style.css?v=3.0" />
+  <link rel="stylesheet" href="/style.css?v=4.0" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />
 </head>
 <body>
@@ -52,6 +52,7 @@
         <i class="fa-solid fa-tower-broadcast brand-icon"></i>
         <span class="brand-name">Streaming Service</span>
         <span class="live-pill"><span class="dot"></span>LIVE</span>
+        <button id="btn-server-node" class="server-node-pill" title="Connected Server Node (Click to View / Switch)"><span class="node-dot"></span><i id="node-os-icon" class="fa-solid fa-server"></i><span id="node-name-label">Detecting...</span></button>
       </div>
       <nav class="nav">
         <div class="layout-tabs">
@@ -68,6 +69,7 @@
         <button id="btn-play-all" class="icon-btn" title="Stream all visible feeds"><i class="fa-solid fa-play"></i><span class="btn-label">Play All</span></button>
         
         <div class="desktop-actions">
+          <button id="btn-server-desk" class="icon-btn" title="Streaming Server Cluster & Switcher"><i class="fa-solid fa-server"></i><span id="desk-server-label" class="btn-label">Server</span></button>
           <button id="btn-vault-desk" class="icon-btn red-accent" title="Secret Recordings Vault"><i class="fa-solid fa-circle-dot"></i><span class="btn-label">Vault</span><span id="vault-badge-desk" class="vault-badge hidden">0</span></button>
           <button id="btn-sync-desk" class="icon-btn" title="Check & Pull Git Updates"><i class="fa-solid fa-code-branch"></i><span id="desk-sync-label" class="btn-label">Sync</span></button>
           <button id="btn-add"     class="icon-btn green" title="Add feed"><i class="fa-solid fa-plus"></i><span class="btn-label">Add Feed</span></button>
@@ -79,6 +81,7 @@
         <div class="mobile-actions">
           <button id="btn-mobile-menu" class="icon-btn" title="Menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
           <div id="mobile-menu" class="mobile-dropdown hidden">
+            <button id="btn-m-server" class="m-item"><i class="fa-solid fa-server item-icon blue-icon"></i> <span id="m-server-label">Switch Server Node</span></button>
             <button id="btn-m-vault" class="m-item"><i class="fa-solid fa-circle-dot item-icon red-icon"></i> Recordings Vault <span id="vault-badge-m" class="vault-badge hidden">0</span></button>
             <button id="btn-m-sync" class="m-item"><i class="fa-solid fa-code-branch item-icon blue-icon"></i> <span id="m-sync-label">Git Auto-Sync</span></button>
             <button id="btn-m-add" class="m-item"><i class="fa-solid fa-plus item-icon green-icon"></i> Add New Feed</button>
@@ -175,8 +178,131 @@
     </div>
   </div>
 
+  <!-- ── Streaming Server Cluster & Switcher Modal ──────── -->
+  <div id="server-modal" class="modal-bg hidden">
+    <div class="modal-box server-box">
+      <div class="modal-hd">
+        <div class="server-title-wrap">
+          <i class="fa-solid fa-server server-header-icon"></i>
+          <div>
+            <h3>Streaming Server Cluster</h3>
+            <p class="server-subtitle">View active server node or switch your active streaming server.</p>
+          </div>
+        </div>
+        <button class="close-btn" id="server-modal-close">&times;</button>
+      </div>
+
+      <div class="server-modal-content">
+        <!-- Active Connected Node Card -->
+        <div class="active-node-box">
+          <div class="node-box-header">
+            <span class="node-box-badge"><span class="node-live-pulse"></span> CURRENT CONNECTED NODE</span>
+            <span id="node-standby-badge" class="standby-tag hidden">STANDBY</span>
+          </div>
+          <div class="node-box-main">
+            <div class="node-box-icon" id="active-node-icon"><i class="fa-solid fa-server"></i></div>
+            <div class="node-box-details">
+              <h4 id="active-node-title">Detecting Server...</h4>
+              <p class="node-box-sub" id="active-node-sub">Querying cluster node status...</p>
+              <div class="node-meta-chips">
+                <span class="node-chip" id="chip-platform"><i class="fa-solid fa-microchip"></i> --</span>
+                <span class="node-chip" id="chip-uptime"><i class="fa-regular fa-clock"></i> --</span>
+                <span class="node-chip" id="chip-streams"><i class="fa-solid fa-tower-broadcast"></i> --</span>
+                <span class="node-chip" id="chip-commit"><i class="fa-solid fa-code-branch"></i> --</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Standby / Traffic Shift Option -->
+        <div class="traffic-failover-card">
+          <div class="failover-info">
+            <strong><i class="fa-solid fa-shuffle"></i> Cloudflare Failover Control</strong>
+            <p>Shift all incoming live stream traffic to your other backup server node.</p>
+          </div>
+          <button id="btn-toggle-standby" class="btn-secondary sm-btn">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i> Shift Traffic to Peer Node
+          </button>
+        </div>
+
+        <!-- Switch Streaming Server Origin -->
+        <div class="server-switch-section">
+          <h4 class="section-title"><i class="fa-solid fa-network-wired"></i> Select Active Streaming Server</h4>
+          <p class="section-sub">Choose which server your device streams from:</p>
+
+          <div class="server-options-list">
+            <!-- Option 1: Cloudflare Auto -->
+            <div class="server-card active" id="card-server-auto" data-target="auto">
+              <div class="server-card-radio"><span class="radio-dot"></span></div>
+              <div class="server-card-info">
+                <div class="server-card-title">
+                  <i class="fa-solid fa-cloud"></i> Cloudflare Auto-Failover (Recommended)
+                  <span class="current-tag" id="tag-auto">ACTIVE</span>
+                </div>
+                <div class="server-card-desc">Active-Active cluster. Automatically streams from whichever server is online with zero downtime.</div>
+              </div>
+              <button class="btn-switch-node" data-target="auto">Use Auto</button>
+            </div>
+
+            <!-- Option 2: Mac Mini Direct -->
+            <div class="server-card" id="card-server-mac" data-target="mac">
+              <div class="server-card-radio"><span class="radio-dot"></span></div>
+              <div class="server-card-info">
+                <div class="server-card-title">
+                  <i class="fa-brands fa-apple"></i> Mac Mini (Backup Server 1)
+                  <span class="current-tag hidden" id="tag-mac">ACTIVE</span>
+                </div>
+                <div class="server-card-input-row">
+                  <input type="text" id="input-mac-url" placeholder="http://Bhakts-Mac-mini-2.local:3000" class="server-url-input" />
+                  <button id="btn-ping-mac" class="ping-btn" title="Test Connection"><i class="fa-solid fa-bolt"></i> Ping</button>
+                  <span id="ping-res-mac" class="ping-badge"></span>
+                </div>
+              </div>
+              <button class="btn-switch-node" data-target="mac">Switch</button>
+            </div>
+
+            <!-- Option 3: Windows PC Direct -->
+            <div class="server-card" id="card-server-win" data-target="win">
+              <div class="server-card-radio"><span class="radio-dot"></span></div>
+              <div class="server-card-info">
+                <div class="server-card-title">
+                  <i class="fa-brands fa-windows"></i> Windows PC (Backup Server 2)
+                  <span class="current-tag hidden" id="tag-win">ACTIVE</span>
+                </div>
+                <div class="server-card-input-row">
+                  <input type="text" id="input-win-url" placeholder="http://localhost:3000" class="server-url-input" />
+                  <button id="btn-ping-win" class="ping-btn" title="Test Connection"><i class="fa-solid fa-bolt"></i> Ping</button>
+                  <span id="ping-res-win" class="ping-badge"></span>
+                </div>
+              </div>
+              <button class="btn-switch-node" data-target="win">Switch</button>
+            </div>
+
+            <!-- Option 4: Custom URL -->
+            <div class="server-card" id="card-server-custom" data-target="custom">
+              <div class="server-card-radio"><span class="radio-dot"></span></div>
+              <div class="server-card-info">
+                <div class="server-card-title">
+                  <i class="fa-solid fa-sliders"></i> Custom Server Node URL
+                  <span class="current-tag hidden" id="tag-custom">ACTIVE</span>
+                </div>
+                <div class="server-card-input-row">
+                  <input type="text" id="input-custom-url" placeholder="http://192.168.29.xxx:3000" class="server-url-input" />
+                  <button id="btn-ping-custom" class="ping-btn" title="Test Connection"><i class="fa-solid fa-bolt"></i> Ping</button>
+                  <span id="ping-res-custom" class="ping-badge"></span>
+                </div>
+              </div>
+              <button class="btn-switch-node" data-target="custom">Switch</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- JSMpeg player library (renders MPEG1 video on canvas via WebSocket) -->
   <script src="https://cdn.jsdelivr.net/gh/phoboslab/jsmpeg@master/jsmpeg.min.js"></script>
-  <script src="/app.js?v=3.0"></script>
+  <script src="/app.js?v=4.0"></script>
 </body>
 </html>

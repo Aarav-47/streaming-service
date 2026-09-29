@@ -5,11 +5,16 @@
 'use strict';
 
 // ── State ─────────────────────────────────────────
-let authToken   = localStorage.getItem('stream_token') || null;
-let feeds     = [];
-let players     = {};   // camId -> JSMpeg.Player instance
-let wakeLock    = null;
-let deferredPWA = null;
+let authToken          = localStorage.getItem('stream_token') || null;
+let feeds            = [];
+let players            = {};   // camId -> JSMpeg.Player instance
+let wakeLock           = null;
+let deferredPWA        = null;
+let activeServerTarget = localStorage.getItem('stream_server_target') || 'auto';
+let macServerUrl       = localStorage.getItem('stream_mac_url') || 'http://Bhakts-Mac-mini-2.local:3000';
+let winServerUrl       = localStorage.getItem('stream_win_url') || 'http://localhost:3000';
+let customServerUrl    = localStorage.getItem('stream_custom_url') || '';
+let currentNodeData    = null;
 
 // ── DOM ───────────────────────────────────────────
 const loginScreen = document.getElementById('login-screen');
@@ -22,6 +27,7 @@ const modal       = document.getElementById('modal');
 const camForm     = document.getElementById('cam-form');
 const camErr      = document.getElementById('cam-err');
 const modalTitle  = document.getElementById('modal-title');
+const serverModal = document.getElementById('server-modal');
 
 // ── Service Worker (PWA) ──────────────────────────
 if ('serviceWorker' in navigator) {
@@ -136,10 +142,42 @@ function showApp() {
   loadFeeds();
   checkGitSyncStatus();
   loadRecordingsList();
+  refreshNodeStatus();
+}
+
+// ── Multi-Node Server Target Helpers ──────────────
+function getServerBaseUrl() {
+  if (activeServerTarget === 'mac') return macServerUrl.replace(/\/+$/, '');
+  if (activeServerTarget === 'win') return winServerUrl.replace(/\/+$/, '');
+  if (activeServerTarget === 'custom') return customServerUrl.replace(/\/+$/, '');
+  return ''; // 'auto' -> use current origin (relative URLs)
+}
+
+function resolveApiUrl(path) {
+  const base = getServerBaseUrl();
+  if (!base) return path;
+  return base + path;
+}
+
+function resolveWsUrl(path) {
+  const base = getServerBaseUrl();
+  if (!base) {
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${wsProto}://${location.host}${path}`;
+  }
+  try {
+    const u = new URL(base);
+    const wsProto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProto}//${u.host}${path}`;
+  } catch (_) {
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${wsProto}://${location.host}${path}`;
+  }
 }
 
 // ── API Helper ────────────────────────────────────
 async function apiFetch(url, { method = 'GET', body } = {}) {
+  const targetUrl = (url.startsWith('http://') || url.startsWith('https://')) ? url : resolveApiUrl(url);
   const opts = {
     method,
     headers: {
@@ -149,7 +187,7 @@ async function apiFetch(url, { method = 'GET', body } = {}) {
     credentials: 'include'
   };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
+  const res = await fetch(targetUrl, opts);
   return res.json();
 }
 
@@ -351,9 +389,7 @@ window.startFeed = function(id) {
   }
 
   const canvas = resetCanvas(card, id);
-
-  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const wsUrl   = `${wsProto}://${location.host}/stream?id=${encodeURIComponent(id)}&quality=${q}&token=${encodeURIComponent(authToken)}`;
+  const wsUrl  = resolveWsUrl(`/stream?id=${encodeURIComponent(id)}&quality=${q}&token=${encodeURIComponent(authToken)}`);
 
   initPlayer(id, wsUrl, canvas);
   updatePlayAllBtn();
@@ -1521,6 +1557,284 @@ if (btnMSync) {
 setInterval(() => {
   if (authToken) checkGitSyncStatus(false);
 }, 60000);
+
+// ── Server Node Cluster & Switcher Logic ──────────
+const btnServerNode    = document.getElementById('btn-server-node');
+const btnServerDesk    = document.getElementById('btn-server-desk');
+const btnMServer       = document.getElementById('btn-m-server');
+const serverModalClose = document.getElementById('server-modal-close');
+const btnToggleStandby = document.getElementById('btn-toggle-standby');
+
+function formatUptime(seconds) {
+  if (!seconds || seconds <= 0) return 'Just started';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${seconds % 60}s`;
+}
+
+async function refreshNodeStatus() {
+  try {
+    const data = await apiFetch('/api/system/node');
+    if (data && data.success) {
+      currentNodeData = data;
+      updateNodeUI(data);
+    } else {
+      updateNodeUI({ status: 'offline' });
+    }
+  } catch (err) {
+    console.warn('[Cluster] Node status check failed:', err);
+    updateNodeUI({ status: 'offline' });
+  }
+}
+
+function updateNodeUI(node) {
+  const labelEl   = document.getElementById('node-name-label');
+  const osIconEl  = document.getElementById('node-os-icon');
+  const mLabelEl  = document.getElementById('m-server-label');
+  const deskLabel = document.getElementById('desk-server-label');
+  const dotEl     = document.querySelector('.server-node-pill .node-dot');
+
+  if (!node || node.status === 'offline') {
+    if (labelEl) labelEl.textContent = 'Offline';
+    if (mLabelEl) mLabelEl.textContent = 'Server: Offline';
+    if (deskLabel) deskLabel.textContent = 'Offline';
+    if (dotEl) dotEl.className = 'node-dot offline';
+    return;
+  }
+
+  const isMac = node.platform === 'darwin';
+  const isWin = node.platform === 'win32';
+  const iconClass = isMac ? 'fa-brands fa-apple' : isWin ? 'fa-brands fa-windows' : 'fa-solid fa-server';
+
+  if (osIconEl) osIconEl.className = iconClass;
+  const shortName = isMac ? 'Mac Mini' : isWin ? 'Windows PC' : 'Server';
+  if (labelEl) labelEl.textContent = shortName;
+  if (mLabelEl) mLabelEl.textContent = `Server: ${shortName}`;
+  if (deskLabel) deskLabel.textContent = shortName;
+
+  if (dotEl) {
+    dotEl.className = node.standbyMode ? 'node-dot standby' : 'node-dot';
+  }
+
+  // Update modal cards
+  const titleEl    = document.getElementById('active-node-title');
+  const subEl      = document.getElementById('active-node-sub');
+  const iconBox    = document.getElementById('active-node-icon');
+  const platChip   = document.getElementById('chip-platform');
+  const upChip     = document.getElementById('chip-uptime');
+  const strChip    = document.getElementById('chip-streams');
+  const comChip    = document.getElementById('chip-commit');
+  const standbyTag = document.getElementById('node-standby-badge');
+  const standbyBtn = document.getElementById('btn-toggle-standby');
+
+  if (titleEl) titleEl.textContent = `${node.nodeType || shortName} — ${node.hostname}`;
+  if (subEl) {
+    const ipStr = (node.localIps && node.localIps.length) ? node.localIps.join(', ') : '127.0.0.1';
+    subEl.textContent = `Local IP: ${ipStr} • Port 3000 • High-Availability Active`;
+  }
+  if (iconBox) iconBox.innerHTML = `<i class="${iconClass}"></i>`;
+  if (platChip) platChip.innerHTML = `<i class="fa-solid fa-microchip"></i> ${node.platformLabel || node.platform} (${node.arch || ''})`;
+  if (upChip) upChip.innerHTML = `<i class="fa-regular fa-clock"></i> ${formatUptime(node.uptime)}`;
+  if (strChip) strChip.innerHTML = `<i class="fa-solid fa-tower-broadcast"></i> ${node.activeStreams || 0} Live Feeds`;
+  if (comChip) comChip.innerHTML = `<i class="fa-solid fa-code-branch"></i> ${node.gitCommit || 'HEAD'}`;
+
+  if (standbyTag) {
+    standbyTag.classList.toggle('hidden', !node.standbyMode);
+  }
+
+  if (standbyBtn) {
+    if (node.standbyMode) {
+      standbyBtn.className = 'btn-secondary sm-btn active-standby';
+      standbyBtn.innerHTML = '<i class="fa-solid fa-play"></i> Resume Active Live Traffic';
+    } else {
+      standbyBtn.className = 'btn-secondary sm-btn';
+      standbyBtn.innerHTML = '<i class="fa-solid fa-arrow-right-arrow-left"></i> Shift Traffic to Peer Node';
+    }
+  }
+}
+
+function openServerModal() {
+  if (!serverModal) return;
+  // Initialize input fields with stored values
+  const inputMac = document.getElementById('input-mac-url');
+  const inputWin = document.getElementById('input-win-url');
+  const inputCust = document.getElementById('input-custom-url');
+  if (inputMac) inputMac.value = macServerUrl;
+  if (inputWin) inputWin.value = winServerUrl;
+  if (inputCust) inputCust.value = customServerUrl;
+
+  // Highlight active target card
+  document.querySelectorAll('.server-card').forEach(card => {
+    const target = card.getAttribute('data-target');
+    const isCurrent = (target === activeServerTarget);
+    card.classList.toggle('active', isCurrent);
+    const tag = card.querySelector('.current-tag');
+    if (tag) tag.classList.toggle('hidden', !isCurrent);
+  });
+
+  serverModal.classList.remove('hidden');
+  refreshNodeStatus();
+}
+
+function closeServerModal() {
+  if (serverModal) serverModal.classList.add('hidden');
+}
+
+function applyServerTarget(target) {
+  activeServerTarget = target;
+  localStorage.setItem('stream_server_target', target);
+
+  // Update active state in modal
+  document.querySelectorAll('.server-card').forEach(card => {
+    const isCurrent = card.getAttribute('data-target') === target;
+    card.classList.toggle('active', isCurrent);
+    const tag = card.querySelector('.current-tag');
+    if (tag) tag.classList.toggle('hidden', !isCurrent);
+  });
+
+  // Re-fetch feeds and reconnect any active feeds
+  refreshNodeStatus();
+  loadFeeds();
+
+  // Re-init any active video players
+  Object.keys(players).forEach(id => {
+    if (feedPlaying[id]) {
+      const q = feedQuality[id] || 'sd';
+      playFeed(id, q);
+    }
+  });
+}
+
+async function pingUrl(url, badgeId) {
+  const badge = document.getElementById(badgeId);
+  if (!badge) return;
+  badge.className = 'ping-badge';
+  badge.textContent = 'Testing...';
+  const start = Date.now();
+  try {
+    const clean = url.replace(/\/+$/, '') + '/api/health';
+    const res = await fetch(clean, { cache: 'no-store' });
+    const elapsed = Date.now() - start;
+    if (res.ok) {
+      badge.className = 'ping-badge online';
+      badge.textContent = `🟢 ${elapsed}ms`;
+    } else {
+      badge.className = 'ping-badge error';
+      badge.textContent = `🔴 HTTP ${res.status}`;
+    }
+  } catch (_) {
+    badge.className = 'ping-badge error';
+    badge.textContent = '🔴 Offline';
+  }
+}
+
+// Bind server switcher UI events
+if (btnServerNode) btnServerNode.addEventListener('click', openServerModal);
+if (btnServerDesk) btnServerDesk.addEventListener('click', openServerModal);
+if (btnMServer) {
+  btnMServer.addEventListener('click', () => {
+    toggleMobileMenu(false);
+    openServerModal();
+  });
+}
+if (serverModalClose) serverModalClose.addEventListener('click', closeServerModal);
+if (serverModal) {
+  serverModal.addEventListener('click', (e) => {
+    if (e.target === serverModal) closeServerModal();
+  });
+}
+
+// Target switch buttons
+document.querySelectorAll('.btn-switch-node').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const target = e.currentTarget.getAttribute('data-target');
+    applyServerTarget(target);
+  });
+});
+
+// Input field storage
+const inputMac = document.getElementById('input-mac-url');
+const inputWin = document.getElementById('input-win-url');
+const inputCust = document.getElementById('input-custom-url');
+
+if (inputMac) {
+  inputMac.addEventListener('change', (e) => {
+    macServerUrl = e.target.value.trim();
+    localStorage.setItem('stream_mac_url', macServerUrl);
+  });
+}
+if (inputWin) {
+  inputWin.addEventListener('change', (e) => {
+    winServerUrl = e.target.value.trim();
+    localStorage.setItem('stream_win_url', winServerUrl);
+  });
+}
+if (inputCust) {
+  inputCust.addEventListener('change', (e) => {
+    customServerUrl = e.target.value.trim();
+    localStorage.setItem('stream_custom_url', customServerUrl);
+  });
+}
+
+// Ping buttons
+const btnPingMac = document.getElementById('btn-ping-mac');
+const btnPingWin = document.getElementById('btn-ping-win');
+const btnPingCust = document.getElementById('btn-ping-custom');
+
+if (btnPingMac) {
+  btnPingMac.addEventListener('click', () => {
+    const url = (inputMac && inputMac.value.trim()) || macServerUrl;
+    pingUrl(url, 'ping-res-mac');
+  });
+}
+if (btnPingWin) {
+  btnPingWin.addEventListener('click', () => {
+    const url = (inputWin && inputWin.value.trim()) || winServerUrl;
+    pingUrl(url, 'ping-res-win');
+  });
+}
+if (btnPingCust) {
+  btnPingCust.addEventListener('click', () => {
+    const url = (inputCust && inputCust.value.trim()) || customServerUrl;
+    if (!url) {
+      alert('Please enter a server URL to ping.');
+      return;
+    }
+    pingUrl(url, 'ping-res-custom');
+  });
+}
+
+// Toggle Standby button
+if (btnToggleStandby) {
+  btnToggleStandby.addEventListener('click', async () => {
+    if (!currentNodeData) return;
+    const newStandby = !currentNodeData.standbyMode;
+    try {
+      const res = await apiFetch('/api/system/node-mode', {
+        method: 'POST',
+        body: { standby: newStandby }
+      });
+      if (res && res.success) {
+        currentNodeData.standbyMode = res.standbyMode;
+        updateNodeUI(currentNodeData);
+        alert(newStandby ?
+          'This node is now in STANDBY mode.\nLive stream traffic will automatically route to your peer backup node!' :
+          'This node has RESUMED active live traffic!'
+        );
+      }
+    } catch (err) {
+      alert(`Failed to toggle standby mode: ${err.message}`);
+    }
+  });
+}
+
+// Poll server node status every 15s
+setInterval(() => {
+  if (authToken) refreshNodeStatus();
+}, 15000);
 
 // ── Init ──────────────────────────────────────────
 checkAuth();

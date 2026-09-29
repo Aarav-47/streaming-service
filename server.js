@@ -6,6 +6,7 @@
 // ============================================================
 
 const fs          = require('fs');
+const os          = require('os');
 const path        = require('path');
 const http        = require('http');
 const net         = require('net');
@@ -17,6 +18,26 @@ const WebSocket   = require('ws');
 const jwt         = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const cors        = require('cors');
+
+// ── Cluster & Node State ─────────────────────────────────────
+let nodeStandbyMode = false;
+
+function getLocalIps() {
+  try {
+    const nets = os.networkInterfaces();
+    const results = [];
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          results.push(net.address);
+        }
+      }
+    }
+    return results;
+  } catch (_) {
+    return [];
+  }
+}
 
 // ── Diagnostics & Status Tracking ────────────────────────────
 const feedStatusCache = new Map(); // id -> { status, code, short, message, timestamp }
@@ -262,9 +283,23 @@ function stopStreamIfEmpty(sessionKey) {
 
 // ── Express App ──────────────────────────────────────────────
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Server Node Identification & Standby Handler
+app.use((req, res, next) => {
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
+  const nodeType = isMac ? 'Mac Mini' : isWin ? 'Windows PC' : 'Server';
+  res.setHeader('X-Stream-Node', `${nodeType} (${os.hostname()})`);
+  res.setHeader('X-Stream-Platform', process.platform);
+
+  if (nodeStandbyMode && req.path === '/api/health') {
+    return res.status(503).json({ success: false, status: 'standby', message: 'Node is in standby mode' });
+  }
+  next();
+});
 
 // ── Auth Helpers ─────────────────────────────────────────────
 function signToken(user) {
@@ -773,14 +808,55 @@ app.post('/api/webhook/git-sync', (req, res) => {
   res.json({ success: true, message: 'Auto-sync initiated' });
 });
 
+// ── Cluster & Node System Endpoints ─────────────────────────
+app.get('/api/system/node', authMiddleware, (req, res) => {
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
+  const nodeType = isMac ? 'Mac Mini' : isWin ? 'Windows PC' : 'Server';
+
+  res.json({
+    success: true,
+    nodeId: isMac ? 'mac_mini' : isWin ? 'windows_pc' : 'server',
+    nodeName: `${nodeType} (${os.hostname()})`,
+    nodeType,
+    hostname: os.hostname(),
+    platform: process.platform,
+    platformLabel: isMac ? 'macOS' : isWin ? 'Windows' : process.platform,
+    arch: os.arch(),
+    uptime: Math.floor(process.uptime()),
+    activeStreams: streamSessions.size,
+    totalFeeds: getFeeds().length,
+    localIps: getLocalIps(),
+    standbyMode: nodeStandbyMode,
+    gitCommit: lastGitSync.currentCommit,
+    serverTime: Date.now()
+  });
+});
+
+app.post('/api/system/node-mode', authMiddleware, (req, res) => {
+  const { standby } = req.body || {};
+  nodeStandbyMode = Boolean(standby);
+  console.log(`[Cluster] Node standby mode set to: ${nodeStandbyMode}`);
+  res.json({ success: true, standbyMode: nodeStandbyMode });
+});
+
 // ── Health Check ──────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
+  const nodeType = isMac ? 'Mac Mini' : isWin ? 'Windows PC' : 'Server';
+
   res.json({
-    status: 'ok',
+    status: nodeStandbyMode ? 'standby' : 'ok',
+    nodeName: `${nodeType} (${os.hostname()})`,
+    nodeType,
+    hostname: os.hostname(),
+    platform: process.platform,
     activeStreams: streamSessions.size,
     totalFeeds: getFeeds().length,
     gitCommit: lastGitSync.currentCommit,
-    uptime: Math.round(process.uptime())
+    uptime: Math.round(process.uptime()),
+    standbyMode: nodeStandbyMode
   });
 });
 
