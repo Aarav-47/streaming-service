@@ -301,26 +301,77 @@ function renderGrid() {
     card.dataset.id = cam.id;
 
     let lastTap = 0;
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.q-toggle-btn') || e.target.closest('.cam-overlay') || e.target.closest('.cam-btn')) return;
-      const now = Date.now();
-      if (now - lastTap < 320) {
-        // Double-tap on mobile/desktop: Toggle 1-View and 4-View
-        if (pageSize === 1) {
-          applyGrid(4);
-        } else {
-          const feedIndex = feeds.findIndex(f => f.id === cam.id);
-          if (feedIndex !== -1) {
-            currentPage = feedIndex + 1;
-            applyGrid(1);
-          }
+    let tapTimer = null;
+    let touchMoved = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    card.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length === 1) {
+        touchMoved = false;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length === 1) {
+        const dx = Math.abs(e.touches[0].clientX - touchStartX);
+        const dy = Math.abs(e.touches[0].clientY - touchStartY);
+        if (dx > 8 || dy > 8) {
+          touchMoved = true;
         }
-        lastTap = 0;
+      }
+    }, { passive: true });
+
+    card.addEventListener('click', (e) => {
+      if (touchMoved) {
+        touchMoved = false;
         return;
       }
+      // Never toggle bar if user clicked any button, overlay control, or zoom badge
+      if (e.target.closest('.cam-btn') || 
+          e.target.closest('.q-toggle-btn') || 
+          e.target.closest('.cam-overlay') || 
+          e.target.closest('.zoom-badge') ||
+          e.target.closest('button')) {
+        return;
+      }
+
+      const now = Date.now();
+      const timeSinceLast = now - lastTap;
+
+      if (timeSinceLast < 280) {
+        // Double-tap on mobile/desktop: Toggle 1-View and 4-View (or reset digital zoom)
+        clearTimeout(tapTimer);
+        tapTimer = null;
+        lastTap = 0;
+
+        const state = (typeof getZoomState === 'function') ? getZoomState(cam.id) : null;
+        if (state && state.scale > 1.2) {
+          resetZoom(cam.id);
+        } else {
+          if (pageSize === 1) {
+            applyGrid(4);
+          } else {
+            const feedIndex = feeds.findIndex(f => f.id === cam.id);
+            if (feedIndex !== -1) {
+              currentPage = feedIndex + 1;
+              applyGrid(1);
+            }
+          }
+        }
+        return;
+      }
+
       lastTap = now;
-      document.querySelectorAll('.cam-card.focused-card').forEach(c => c.classList.remove('focused-card'));
-      card.classList.add('focused-card');
+      clearTimeout(tapTimer);
+      tapTimer = setTimeout(() => {
+        // Single tap on stream: Toggle top band of buttons!
+        card.classList.toggle('bar-hidden');
+        document.querySelectorAll('.cam-card.focused-card').forEach(c => c.classList.remove('focused-card'));
+        card.classList.add('focused-card');
+      }, 220);
     });
 
     const canvas = document.createElement('canvas');
@@ -948,29 +999,40 @@ function escapeHtml(str) {
 }
 
 // ── Grid Layout ───────────────────────────────────
+function applyGrid(g) {
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    b.classList.toggle('active', parseInt(b.dataset.grid, 10) === g);
+  });
+
+  currentPage = 1;
+
+  if (g === 1) {
+    pageSize = 1;
+    grid.className = 'grid g1';
+  } else if (g === 4) {
+    pageSize = 4;
+    grid.className = 'grid g2';
+  } else if (g === 9) {
+    pageSize = 9;
+    grid.className = 'grid g3';
+  } else {
+    pageSize = 0; // All
+    grid.className = 'grid g0';
+  }
+
+  const npGridLabel = document.getElementById('np-grid-label');
+  const npBtnGrid   = document.getElementById('np-btn-grid');
+  if (npGridLabel) npGridLabel.textContent = (pageSize === 1 ? '1' : '4');
+  if (npBtnGrid)   npBtnGrid.classList.toggle('active', pageSize === 4);
+
+  renderGrid();
+}
+window.applyGrid = applyGrid;
+
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-
     const g = parseInt(btn.dataset.grid, 10);
-    currentPage = 1;
-
-    if (g === 1) {
-      pageSize = 1;
-      grid.className = 'grid g1';
-    } else if (g === 4) {
-      pageSize = 4;
-      grid.className = 'grid g2';
-    } else if (g === 9) {
-      pageSize = 9;
-      grid.className = 'grid g3';
-    } else {
-      pageSize = 0; // All
-      grid.className = 'grid g0';
-    }
-
-    renderGrid();
+    applyGrid(g);
   });
 });
 
@@ -1244,26 +1306,6 @@ function setupZoomAndPan(card, id) {
       );
       state.initialScale = state.scale;
     } else if (e.touches.length === 1) {
-      const now = Date.now();
-      // Double tap detector
-      if (now - state.lastTap < 320) {
-        e.preventDefault();
-        if (state.scale > 1.2) {
-          resetZoom(id);
-        } else {
-          state.scale = 2.5;
-          const rect = card.getBoundingClientRect();
-          const tapX = e.touches[0].clientX - (rect.left + rect.width / 2);
-          const tapY = e.touches[0].clientY - (rect.top + rect.height / 2);
-          state.x = -tapX * 1.5;
-          state.y = -tapY * 1.5;
-          applyZoomTransform(id, true);
-        }
-        state.lastTap = 0;
-        return;
-      }
-      state.lastTap = now;
-
       if (state.scale > 1) {
         state.isPanning = true;
         state.startX = e.touches[0].clientX - state.x;
