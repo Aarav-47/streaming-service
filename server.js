@@ -152,6 +152,17 @@ function getOrCreateStream(cam, quality = 'sd') {
   const isHD = (quality.toLowerCase() === 'hd');
   const qKey = isHD ? 'hd' : 'sd';
   const sessionKey = `${cam.id}_${qKey}`;
+  const oppositeKey = isHD ? `${cam.id}_sd` : `${cam.id}_hd`;
+
+  // Immediately terminate idle opposite quality session for this feed to release camera RTSP port
+  if (streamSessions.has(oppositeKey)) {
+    const opp = streamSessions.get(oppositeKey);
+    if (opp && opp.clients.size === 0) {
+      console.log(`[Stream] Quality switched for [${cam.id}] to [${qKey.toUpperCase()}]. Instantly stopping idle session [${oppositeKey}].`);
+      killProcess(opp.ffmpegProc);
+      streamSessions.delete(oppositeKey);
+    }
+  }
 
   if (streamSessions.has(sessionKey)) {
     return streamSessions.get(sessionKey);
@@ -173,20 +184,19 @@ function getOrCreateStream(cam, quality = 'sd') {
 
   // FFmpeg parameters (pure CPU software decoding - rock solid in Windows Service):
   // SD: 640x360, 500k bitrate, 20 fps, 1 thread (ultralight, ~2% CPU)
-  // HD: Native 1080p, 1500k bitrate, 25 fps, 2 threads (full crystal clear)
+  // HD: 1280x720 (720p HD), 1800k bitrate, 25 fps, 3 threads (crystal clear, instant startup, smooth WebAssembly decode)
   const args = [
     '-loglevel', 'error',
-    '-threads', isHD ? '2' : '1',
-    '-reorder_queue_size', '4000',
+    '-threads', isHD ? '3' : '1',
     '-rtsp_transport', 'tcp',
-    '-probesize', '2000000',
-    '-analyzeduration', '2000000',
+    '-probesize', '1500000',
+    '-analyzeduration', '1500000',
     '-fflags', '+nobuffer+genpts+discardcorrupt',
     '-flags', 'low_delay',
     '-i', targetUrl,
     '-f', 'mpegts',
     '-codec:v', 'mpeg1video',
-    ...(isHD ? ['-b:v', '1500k', '-r', '25'] : ['-s', '640x360', '-b:v', '500k', '-r', '20']),
+    ...(isHD ? ['-s', '1280x720', '-b:v', '1800k', '-r', '25'] : ['-s', '640x360', '-b:v', '500k', '-r', '20']),
     '-bf', '0',
     '-codec:a', 'mp2',
     '-b:a', isHD ? '128k' : '64k',

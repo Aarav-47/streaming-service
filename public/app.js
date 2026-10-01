@@ -553,7 +553,28 @@ window.setFeedQuality = function(id, quality) {
     qtoggle.classList.toggle('hd-active', quality === 'hd');
   }
   if (feedPlaying[id]) {
-    startFeed(id);
+    if (players[id]) {
+      try {
+        if (players[id].source && players[id].source.socket) {
+          players[id].source.socket.close(1000, 'Quality switch');
+        }
+        players[id].destroy();
+      } catch (_) {}
+      delete players[id];
+    }
+    const overlay = document.getElementById(`overlay-${id}`);
+    if (overlay) {
+      overlay.innerHTML = `
+        <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+        <span class="overlay-label">Switching to ${quality.toUpperCase()}...</span>
+      `;
+      overlay.classList.remove('hidden');
+    }
+    setTimeout(() => {
+      if (feedPlaying[id]) {
+        startFeed(id);
+      }
+    }, 60);
   }
 };
 
@@ -713,27 +734,13 @@ function showFeedError(camId, err) {
 }
 
 async function handleFeedCloseError(camId, code, reason) {
-  feedPlaying[camId] = false;
-  updateAutoWakeLock();
-  if (players[camId]) {
-    try { players[camId].destroy(); } catch (_) {}
-    delete players[camId];
-  }
-
-  const playBtn = document.getElementById(`playbtn-${camId}`);
-  if (playBtn) {
-    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
-    playBtn.classList.remove('playing');
-    playBtn.title = 'Start Feed';
-  }
-
-  updatePlayAllBtn();
+  const wasPlaying = Boolean(feedPlaying[camId]);
 
   // If feed is supposed to be playing and not an auth error, auto-retry up to 3 times for sluggish feeds
   const attempts = (feedRetryCount[camId] || 0) + 1;
   feedRetryCount[camId] = attempts;
 
-  if (attempts <= 3 && feedPlaying[camId] && code !== 4401) {
+  if (attempts <= 3 && wasPlaying && code !== 4401) {
     console.log(`[Stream] Sluggish feed [${camId}] auto-reconnecting (attempt ${attempts}/3)...`);
     const overlay = document.getElementById(`overlay-${camId}`);
     if (overlay) {
@@ -751,6 +758,22 @@ async function handleFeedCloseError(camId, code, reason) {
     }, delay);
     return;
   }
+
+  feedPlaying[camId] = false;
+  updateAutoWakeLock();
+  if (players[camId]) {
+    try { players[camId].destroy(); } catch (_) {}
+    delete players[camId];
+  }
+
+  const playBtn = document.getElementById(`playbtn-${camId}`);
+  if (playBtn) {
+    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+    playBtn.classList.remove('playing');
+    playBtn.title = 'Start Feed';
+  }
+
+  updatePlayAllBtn();
 
   // 1. Check if WebSocket gave us a specific diagnostic code
   if (code === 4401 || (reason && reason.toLowerCase().includes('auth'))) {
@@ -851,7 +874,9 @@ window.editCam = function(id) {
 
 function initPlayer(camId, wsUrl, canvas) {
   let firstFrame = false;
+  let watchdogTimer = null;
   const overlay = document.getElementById(`overlay-${camId}`);
+  const isHD = (feedQuality[camId] === 'hd');
 
   // Create JSMpeg player with audio enabled, muted by default
   const player = new JSMpeg.Player(wsUrl, {
@@ -861,12 +886,17 @@ function initPlayer(camId, wsUrl, canvas) {
     loop:     false,
     onVideoDecode: () => {
       feedRetryCount[camId] = 0;
+      if (watchdogTimer) {
+        clearTimeout(watchdogTimer);
+        watchdogTimer = null;
+      }
       if (!firstFrame) {
         firstFrame = true;
         if (overlay) overlay.classList.add('hidden');
       }
     },
     onSourceCompleted: () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       if (!firstFrame && feedPlaying[camId]) {
         handleFeedCloseError(camId, 4500, 'Stream ended without video frames');
       }
@@ -889,23 +919,26 @@ function initPlayer(camId, wsUrl, canvas) {
   // Attach error & close listeners directly to WebSocket instance
   if (player.source && player.source.socket) {
     player.source.socket.addEventListener('close', (e) => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       if (!firstFrame && feedPlaying[camId]) {
         handleFeedCloseError(camId, e.code, e.reason);
       }
     });
     player.source.socket.addEventListener('error', () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       if (!firstFrame && feedPlaying[camId]) {
         handleFeedCloseError(camId, 4408, 'WebSocket network failure');
       }
     });
   }
 
-  // Safety watchdog: if after 7.5 seconds no frame has decoded, trigger diagnostic check
-  setTimeout(() => {
+  // Safety watchdog: generous 16s for HD keyframe negotiation, 12s for SD
+  const timeoutMs = isHD ? 16000 : 12000;
+  watchdogTimer = setTimeout(() => {
     if (!firstFrame && feedPlaying[camId]) {
-      handleFeedCloseError(camId, 4408, 'Connection timed out (7s)');
+      handleFeedCloseError(camId, 4408, `Connection timed out (${Math.round(timeoutMs / 1000)}s)`);
     }
-  }, 7500);
+  }, timeoutMs);
 
   // Start with audio muted
   player.volume = 0;
@@ -2144,15 +2177,7 @@ if (npBtnQuality) {
     const offset = (currentPage - 1) * pageSize;
     const visibleFeeds = feeds.slice(offset, offset + pageSize);
     visibleFeeds.forEach(cam => {
-      feedQuality[cam.id] = mobileToolbarQuality;
-      const qBtn = document.getElementById(`qtoggle-${cam.id}`);
-      if (qBtn) {
-        qBtn.textContent = mobileToolbarQuality.toUpperCase();
-        qBtn.classList.toggle('hd-active', mobileToolbarQuality === 'hd');
-      }
-      if (feedPlaying[cam.id]) {
-        startFeed(cam.id);
-      }
+      setFeedQuality(cam.id, mobileToolbarQuality);
     });
   });
 }

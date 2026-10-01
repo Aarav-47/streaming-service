@@ -1,4 +1,4 @@
-const CACHE = 'streaming-service-v9';
+const CACHE = 'streaming-service-v10';
 const SHELL = [
   '/',
   '/index.html',
